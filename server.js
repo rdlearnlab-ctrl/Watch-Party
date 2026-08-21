@@ -5,7 +5,7 @@ const io = require('socket.io')(http);
 
 app.use(express.static('public'));
 
-const activeRooms = {}; // Format: { roomId: { isPublic: boolean, users: number, category: string, hostSocketId: string } }
+const activeRooms = {}; 
 
 function getPublicRooms() {
     const publicRooms = [];
@@ -29,8 +29,7 @@ io.on('connection', (socket) => {
             activeRooms[data.roomId] = { 
                 isPublic: data.isPublic, 
                 users: 0, 
-                category: data.category || 'Movie Night',
-                hostSocketId: socket.id 
+                category: data.category || 'Movie Night'
             };
         }
         io.emit('update_rooms', getPublicRooms());
@@ -41,13 +40,10 @@ io.on('connection', (socket) => {
         socket.roomId = data.roomId;
         
         if (!activeRooms[data.roomId]) {
-            activeRooms[data.roomId] = { isPublic: false, users: 0, category: 'Movie Night', hostSocketId: socket.id };
+            activeRooms[data.roomId] = { isPublic: false, users: 0, category: 'Movie Night' };
         }
         activeRooms[data.roomId].users++;
         
-        const isHost = (activeRooms[data.roomId].hostSocketId === socket.id);
-        socket.emit('set_host_status', isHost);
-
         io.emit('update_rooms', getPublicRooms());
         socket.to(data.roomId).emit('user_connected', data.peerId);
     });
