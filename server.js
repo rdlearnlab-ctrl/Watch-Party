@@ -26,9 +26,9 @@ io.on('connection', (socket) => {
     socket.on('clear_board', (roomId) => socket.to(roomId).emit('receive_clear_board'));
     socket.on('sync_timer', (data) => socket.to(data.roomId).emit('receive_sync_timer', data));
     
-    // NEW: Sync Whiteboard Screen Swap
+    // Sync Whiteboard Screen Swap
     socket.on('toggle_board', (data) => socket.to(data.roomId).emit('receive_toggle_board', data.isOpen));
 });
 
 const PORT = process.env.PORT || 3000;
-http.listen(PORT, () => console.log(`Server running on port ${PORT}`));s
+http.listen(PORT, () => console.log(`Server running on port ${PORT}`));
