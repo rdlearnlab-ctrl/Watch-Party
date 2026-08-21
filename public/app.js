@@ -1,6 +1,3 @@
-// ==========================================
-// FIREBASE MODULAR AUTHENTICATION SETUP
-// ==========================================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
 import { 
     getAuth, 
@@ -42,7 +39,8 @@ const currentUserDisplay = document.getElementById('currentUserDisplay');
 
 let appUser = null;
 let myName = "User"; 
-let isHost = false; // Tracks host privileges
+let isHost = false; 
+let globalRooms = [];
 
 onAuthStateChanged(auth, (user) => {
     if (user) {
@@ -82,6 +80,33 @@ googleLoginBtn.addEventListener('click', () => {
 
 logoutBtn.addEventListener('click', () => { signOut(auth); });
 
+// Profile Modal Toggles
+const openProfileBtn = document.getElementById('openProfileBtn');
+const profileModal = document.getElementById('profileModal');
+const closeProfileBtn = document.getElementById('closeProfileBtn');
+const saveProfileBtn = document.getElementById('saveProfileBtn');
+
+openProfileBtn.addEventListener('click', () => profileModal.style.display = 'flex');
+closeProfileBtn.addEventListener('click', () => profileModal.style.display = 'none');
+saveProfileBtn.addEventListener('click', () => {
+    alert("Profile saved locally! (Database sync coming soon)");
+    profileModal.style.display = 'none';
+});
+
+// Icebreaker Logic
+const icebreakers = [
+    "What is the absolute best movie soundtrack of all time?",
+    "If you could live inside any animated movie universe, which would you pick?",
+    "What's a hot take opinion you have about cinema?",
+    "If you were hosting a talk show, who would be your first guest?"
+];
+document.getElementById('icebreakerBtn').addEventListener('click', () => {
+    const randomQuestion = icebreakers[Math.floor(Math.random() * icebreakers.length)];
+    const fullMsg = `🎲 Icebreaker: ${randomQuestion}`;
+    appendMessage(fullMsg, "System");
+    if (currentRoom) socket.emit('send_chat', { roomId: currentRoom, message: fullMsg, sender: "System" });
+});
+
 // ==========================================
 // PEERJS, WEBTORRENT & SOCKET SETUP
 // ==========================================
@@ -91,12 +116,7 @@ const wtClient = new WebTorrent();
 
 const peer = new Peer({
     secure: true,
-    config: {
-        iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' }
-        ]
-    }
+    config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
 }); 
 let myPeerId = null;
 
@@ -107,23 +127,25 @@ peer.on('error', (err) => { if (!myPeerId) myPeerId = "fallback-id-" + Math.rand
 // 1. LOBBY & ROOM LOGIC
 // ==========================================
 const newRoomInput = document.getElementById('newRoomInput');
+const roomCategory = document.getElementById('roomCategory');
 const roomVisibility = document.getElementById('roomVisibility');
 const createRoomBtn = document.getElementById('createRoomBtn');
 const joinPrivateRoomInput = document.getElementById('joinPrivateRoomInput');
 const joinPrivateRoomBtn = document.getElementById('joinPrivateRoomBtn');
 const publicRoomsList = document.getElementById('publicRoomsList');
+const filterCategory = document.getElementById('filterCategory');
 const roomDisplay = document.getElementById('roomDisplay');
 const leaveRoomBtn = document.getElementById('leaveRoomBtn');
 const hostBadge = document.getElementById('hostBadge');
 let currentRoom = null;
 
-function enterRoom(roomId, isPublic = false, isCreating = false) {
+function enterRoom(roomId, isPublic = false, category = 'Movie Night', isCreating = false) {
     if (!myPeerId) return alert("Waiting for connection... try again in a second.");
     currentRoom = roomId;
     roomDisplay.innerText = currentRoom;
     
     if (isCreating) {
-        socket.emit('create_room', { roomId, isPublic });
+        socket.emit('create_room', { roomId, isPublic, category });
     }
     socket.emit('join_room', { roomId, peerId: myPeerId });
     
@@ -134,19 +156,16 @@ function enterRoom(roomId, isPublic = false, isCreating = false) {
 
 createRoomBtn.addEventListener('click', () => {
     const roomId = newRoomInput.value.trim();
-    if (roomId) enterRoom(roomId, roomVisibility.value === 'public', true);
+    if (roomId) enterRoom(roomId, roomVisibility.value === 'public', roomCategory.value, true);
 });
 
 joinPrivateRoomBtn.addEventListener('click', () => {
     const roomId = joinPrivateRoomInput.value.trim();
-    if (roomId) enterRoom(roomId, false, false);
+    if (roomId) enterRoom(roomId, false, 'Private', false);
 });
 
-leaveRoomBtn.addEventListener('click', () => {
-    window.location.reload(); 
-});
+leaveRoomBtn.addEventListener('click', () => { window.location.reload(); });
 
-// Receive host status from server
 socket.on('set_host_status', (status) => {
     isHost = status;
     if (isHost) {
@@ -161,28 +180,40 @@ socket.on('set_host_status', (status) => {
 });
 
 socket.on('update_rooms', (rooms) => {
+    globalRooms = rooms;
+    renderRoomList();
+});
+
+filterCategory.addEventListener('change', renderRoomList);
+
+function renderRoomList() {
     publicRoomsList.innerHTML = '';
-    if (rooms.length === 0) {
-        publicRoomsList.innerHTML = '<p style="color: #4b5563; font-weight: 600;">No public rooms active right now. Be the first to create one!</p>';
+    const selectedFilter = filterCategory.value;
+    const filtered = globalRooms.filter(r => selectedFilter === 'all' || r.category === selectedFilter);
+
+    if (filtered.length === 0) {
+        publicRoomsList.innerHTML = '<p style="color: #4b5563; font-weight: 600;">No rooms found in this category.</p>';
         return;
     }
-    rooms.forEach(room => {
+
+    filtered.forEach(room => {
         const el = document.createElement('div');
         el.classList.add('room-item');
         el.innerHTML = `
             <div>
                 <h4 style="font-size: 20px; font-weight: 700;">${room.roomId}</h4>
-                <span style="font-size: 14px; font-weight: 600; color: #4b5563;">👥 ${room.users} User(s)</span>
+                <span style="font-size: 13px; background: #e5e7eb; padding: 2px 6px; border-radius: 4px; font-weight: 700;">${room.category}</span>
+                <span style="font-size: 14px; font-weight: 600; color: #4b5563; margin-left: 8px;">👥 ${room.users} User(s)</span>
             </div>
             <button class="join-public-btn">Join Party</button>
         `;
-        el.querySelector('button').addEventListener('click', () => enterRoom(room.roomId, true, false));
+        el.querySelector('button').addEventListener('click', () => enterRoom(room.roomId, true, room.category, false));
         publicRoomsList.appendChild(el);
     });
-});
+}
 
 // ==========================================
-// 2. YOUTUBE API & VIDEO SYNC LOGIC (HOST RESTRICTED)
+// 2. YOUTUBE API & VIDEO SYNC LOGIC
 // ==========================================
 let ytPlayer;
 let isYouTubeActive = false;
@@ -191,13 +222,10 @@ let ytEmitLock = false;
 function initYouTubePlayer() {
     ytPlayer = new YT.Player('ytPlayer', { height: '100%', width: '100%', videoId: '', events: { 'onStateChange': onPlayerStateChange } });
 }
-
 if (window.YT && window.YT.Player) { initYouTubePlayer(); } else { window.onYouTubeIframeAPIReady = initYouTubePlayer; }
 
 function onPlayerStateChange(event) {
-    if (ytEmitLock || !currentRoom) return;
-    if (!isHost) return; // Only host can trigger play/pause states for the room
-    
+    if (ytEmitLock || !currentRoom || !isHost) return;
     if (event.data == YT.PlayerState.PLAYING) {
         socket.emit('play_video', currentRoom); socket.emit('seek_video', { roomId: currentRoom, time: ytPlayer.getCurrentTime() });
     } else if (event.data == YT.PlayerState.PAUSED) {
@@ -205,24 +233,9 @@ function onPlayerStateChange(event) {
     }
 }
 
-video.addEventListener('play', () => { 
-    if (currentRoom && !isYouTubeActive) {
-        if (!isHost) { video.pause(); return alert("Only the host can control playback!"); }
-        socket.emit('play_video', currentRoom); 
-    }
-});
-video.addEventListener('pause', () => { 
-    if (currentRoom && !isYouTubeActive) {
-        if (!isHost) return; 
-        socket.emit('pause_video', currentRoom); 
-    }
-});
-video.addEventListener('seeked', () => { 
-    if (currentRoom && !isYouTubeActive) {
-        if (!isHost) return; 
-        socket.emit('seek_video', { roomId: currentRoom, time: video.currentTime }); 
-    }
-});
+video.addEventListener('play', () => { if (currentRoom && !isYouTubeActive) { if (!isHost) { video.pause(); return alert("Only the host can control playback!"); } socket.emit('play_video', currentRoom); } });
+video.addEventListener('pause', () => { if (currentRoom && !isYouTubeActive) { if (!isHost) return; socket.emit('pause_video', currentRoom); } });
+video.addEventListener('seeked', () => { if (currentRoom && !isYouTubeActive) { if (!isHost) return; socket.emit('seek_video', { roomId: currentRoom, time: video.currentTime }); } });
 
 socket.on('receive_play', () => { if (isYouTubeActive && ytPlayer && ytPlayer.playVideo) { ytEmitLock = true; ytPlayer.playVideo(); setTimeout(() => ytEmitLock = false, 500); } else { video.play(); } });
 socket.on('receive_pause', () => { if (isYouTubeActive && ytPlayer && ytPlayer.pauseVideo) { ytEmitLock = true; ytPlayer.pauseVideo(); setTimeout(() => ytEmitLock = false, 500); } else { video.pause(); } });
@@ -254,9 +267,7 @@ function processVideoLink(url) {
 loadUrlBtn.addEventListener('click', () => {
     if (!isHost) return alert("Only the host can load new videos!");
     const url = videoUrlInput.value.trim();
-    if (url && currentRoom) {
-        processVideoLink(url); socket.emit('change_video_url', { roomId: currentRoom, url: url, isTorrent: false }); videoUrlInput.value = ''; 
-    }
+    if (url && currentRoom) { processVideoLink(url); socket.emit('change_video_url', { roomId: currentRoom, url: url, isTorrent: false }); videoUrlInput.value = ''; }
 });
 
 socket.on('receive_video_url', (data) => { 
@@ -265,40 +276,27 @@ socket.on('receive_video_url', (data) => {
         wtClient.add(data.url, (torrent) => {
             const file = torrent.files.find(f => f.name.endsWith('.mp4') || f.name.endsWith('.webm') || f.name.endsWith('.mkv')) || torrent.files[0];
             file.renderTo(video);
-            
             isYouTubeActive = false;
             if (!isBoardOpen) { document.getElementById('ytPlayer').style.display = 'none'; document.getElementById('videoPlayer').style.display = 'block'; }
         });
     } else {
-        processVideoLink(data.url); 
-        appendMessage("The host changed the video!", "System"); 
+        processVideoLink(data.url); appendMessage("The host changed the video!", "System"); 
     }
 });
 
-// WEBTORRENT: Host seeds local file
-uploadBtn.addEventListener('click', () => {
-    if (!isHost) return alert("Only the host can stream local files!");
-    localFileInput.click();
-});
-
+uploadBtn.addEventListener('click', () => { if (!isHost) return alert("Only the host can stream local files!"); localFileInput.click(); });
 localFileInput.addEventListener('change', function() {
     const file = this.files[0];
     if (file) { 
         if (!currentRoom) return alert("Please join a room first!");
-        uploadBtn.innerText = "Seeding...";
-        uploadBtn.disabled = true;
-
+        uploadBtn.innerText = "Seeding..."; uploadBtn.disabled = true;
         wtClient.seed(file, (torrent) => {
             torrent.files[0].renderTo(video);
-            
             isYouTubeActive = false;
             if (!isBoardOpen) { document.getElementById('ytPlayer').style.display = 'none'; document.getElementById('videoPlayer').style.display = 'block'; }
-
             socket.emit('change_video_url', { roomId: currentRoom, url: torrent.magnetURI, isTorrent: true });
             socket.emit('send_chat', { roomId: currentRoom, message: "Started streaming a local movie via WebTorrent!", sender: "System" });
-            
-            uploadBtn.innerText = "Play Local";
-            uploadBtn.disabled = false;
+            uploadBtn.innerText = "Play Local"; uploadBtn.disabled = false;
         });
     }
 });
@@ -316,16 +314,9 @@ let isTheaterMode = false;
 theaterModeBtn.addEventListener('click', () => {
     isTheaterMode = !isTheaterMode;
     document.body.classList.toggle('theater-mode', isTheaterMode);
-    
-    if (isTheaterMode) {
-        theaterModeBtn.innerText = "☀️ Lights On";
-        theaterModeBtn.style.background = "#fef08a";
-        theaterModeBtn.style.color = "#111827";
-    } else {
-        theaterModeBtn.innerText = "🎬 Theater Mode";
-        theaterModeBtn.style.background = "#1f2937";
-        theaterModeBtn.style.color = "white";
-    }
+    theaterModeBtn.innerText = isTheaterMode ? "☀️ Lights On" : "🎬 Theater Mode";
+    theaterModeBtn.style.background = isTheaterMode ? "#fef08a" : "#1f2937";
+    theaterModeBtn.style.color = isTheaterMode ? "#111827" : "white";
 });
 
 tabChatBtn.addEventListener('click', () => { tabChatBtn.classList.add('active'); tabStudyBtn.classList.remove('active'); chatSection.style.display = 'flex'; studySection.style.display = 'none'; });
@@ -357,7 +348,7 @@ chatInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') { e.preve
 socket.on('receive_chat', (data) => { appendMessage(data.message, data.sender || "Friend"); });
 
 // ==========================================
-// 4. MAIN SCREEN WHITEBOARD LOGIC (HOST RESTRICTED CLEAR)
+// 4. WHITEBOARD & 5. POMODORO TIMER LOGIC
 // ==========================================
 const canvas = document.getElementById('whiteboard');
 const ctx = canvas.getContext('2d');
@@ -399,31 +390,21 @@ canvas.addEventListener('mousedown', onMouseDown); canvas.addEventListener('mous
 canvas.addEventListener('touchstart', onMouseDown, { passive: true }); canvas.addEventListener('touchend', onMouseUp, { passive: true }); canvas.addEventListener('touchcancel', onMouseUp, { passive: true }); canvas.addEventListener('touchmove', onMouseMove, { passive: true });
 
 socket.on('receive_draw_line', (data) => { drawLine(data.x0 * canvas.width, data.y0 * canvas.height, data.x1 * canvas.width, data.y1 * canvas.height, data.color, false); });
-
-clearBoardBtn.addEventListener('click', () => { 
-    if (!isHost) return alert("Only the host can clear the board!");
-    ctx.clearRect(0, 0, canvas.width, canvas.height); 
-    if (currentRoom) socket.emit('clear_board', currentRoom); 
-});
+clearBoardBtn.addEventListener('click', () => { if (!isHost) return alert("Only the host can clear the board!"); ctx.clearRect(0, 0, canvas.width, canvas.height); if (currentRoom) socket.emit('clear_board', currentRoom); });
 socket.on('receive_clear_board', () => { ctx.clearRect(0, 0, canvas.width, canvas.height); });
 
-// ==========================================
-// 5. STUDY HUB: POMODORO TIMER LOGIC
-// ==========================================
+// Pomodoro Timer
 const timerDisplay = document.getElementById('timerDisplay');
 const startTimerBtn = document.getElementById('startTimerBtn');
 const resetTimerBtn = document.getElementById('resetTimerBtn');
-
 let timerInterval; let timeLeft = 25 * 60; let isTimerRunning = false;
 
 function updateTimerDisplay() {
     const minutes = Math.floor(timeLeft / 60); const seconds = timeLeft % 60;
     timerDisplay.innerText = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 }
-
 function startSyncTimer() {
-    if (isTimerRunning) return;
-    isTimerRunning = true; startTimerBtn.innerText = "Pause Sync";
+    if (isTimerRunning) return; isTimerRunning = true; startTimerBtn.innerText = "Pause Sync";
     timerInterval = setInterval(() => {
         if (timeLeft > 0) {
             timeLeft--; updateTimerDisplay();
@@ -431,17 +412,9 @@ function startSyncTimer() {
         } else { clearInterval(timerInterval); isTimerRunning = false; startTimerBtn.innerText = "Start Sync"; alert("Focus session complete!"); }
     }, 1000);
 }
-
 function pauseTimer() { clearInterval(timerInterval); isTimerRunning = false; startTimerBtn.innerText = "Start Sync"; if (currentRoom) socket.emit('sync_timer', { roomId: currentRoom, timeLeft: timeLeft, isRunning: false }); }
-startTimerBtn.addEventListener('click', () => { 
-    if (!isHost) return alert("Only the host can control the focus timer!");
-    if (isTimerRunning) pauseTimer(); 
-    else { startSyncTimer(); if (currentRoom) socket.emit('sync_timer', { roomId: currentRoom, timeLeft: timeLeft, isRunning: true }); } 
-});
-resetTimerBtn.addEventListener('click', () => { 
-    if (!isHost) return alert("Only the host can reset the focus timer!");
-    pauseTimer(); timeLeft = 25 * 60; updateTimerDisplay(); if (currentRoom) socket.emit('sync_timer', { roomId: currentRoom, timeLeft: timeLeft, isRunning: false }); 
-});
+startTimerBtn.addEventListener('click', () => { if (!isHost) return alert("Only the host can control the focus timer!"); if (isTimerRunning) pauseTimer(); else { startSyncTimer(); if (currentRoom) socket.emit('sync_timer', { roomId: currentRoom, timeLeft: timeLeft, isRunning: true }); } });
+resetTimerBtn.addEventListener('click', () => { if (!isHost) return alert("Only the host can reset the focus timer!"); pauseTimer(); timeLeft = 25 * 60; updateTimerDisplay(); if (currentRoom) socket.emit('sync_timer', { roomId: currentRoom, timeLeft: timeLeft, isRunning: false }); });
 socket.on('receive_sync_timer', (data) => { timeLeft = data.timeLeft; updateTimerDisplay(); if (data.isRunning && !isTimerRunning) { startSyncTimer(); } else if (!data.isRunning && isTimerRunning) { clearInterval(timerInterval); isTimerRunning = false; startTimerBtn.innerText = "Start Sync"; } });
 
 // ==========================================
@@ -534,10 +507,7 @@ holdToTalkBtn.addEventListener('touchstart', startTalking, { passive: false }); 
 screenShareBtn.addEventListener('click', async () => {
     if (!isScreenSharing) {
         try {
-            currentScreenStream = await navigator.mediaDevices.getDisplayMedia({ 
-                video: true, 
-                audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } 
-            });
+            currentScreenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
             activeCalls.forEach(call => { screenCalls.push(peer.call(call.peer, currentScreenStream, { metadata: { type: 'screenshare' } })); });
             isBoardOpen = false; toggleBoardUI(false); isYouTubeActive = false; document.getElementById('ytPlayer').style.display = 'none'; document.getElementById('videoPlayer').style.display = 'block';
             video.removeAttribute('src'); video.srcObject = currentScreenStream; video.play();
