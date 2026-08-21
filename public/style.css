@@ -301,3 +301,45 @@ h3 {
     background: #ffffff;
     box-shadow: 4px 4px 0px #111827;
 }
+/* --- MOBILE RESPONSIVE DESIGN --- */
+@media (max-width: 900px) {
+    body {
+        overflow: auto; /* Allows natural scrolling on phones */
+        padding: 12px;
+    }
+
+    .main-wrapper {
+        flex-direction: column; /* Stacks the video section and sidebar vertically */
+        height: auto;
+        max-width: 100%;
+        gap: 16px;
+    }
+
+    .video-section {
+        padding: 16px;
+    }
+
+    .room-header h1 {
+        font-size: 32px; /* Scales down the massive title for mobile screens */
+    }
+
+    #videoPlayer {
+        max-height: 250px; /* Keeps the player compact on small displays */
+    }
+
+    .sidebar {
+        min-width: 100%;
+    }
+
+    #video-grid {
+        max-height: 250px; /* Limits camera stacking height with scroll */
+    }
+
+    .chat-container {
+        height: 400px; /* Gives the chat a fixed, usable typing area on mobile */
+    }
+
+    #chatBox {
+        height: 250px;
+    }
+}
