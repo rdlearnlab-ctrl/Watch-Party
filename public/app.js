@@ -1,3 +1,6 @@
+// ==========================================
+// FIREBASE MODULAR AUTHENTICATION & DATABASE SETUP
+// ==========================================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
 import { 
     getAuth, 
@@ -8,6 +11,12 @@ import {
     GoogleAuthProvider,
     signInWithPopup
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
+import { 
+    getFirestore, 
+    doc, 
+    setDoc, 
+    getDoc 
+} from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyCGkUPgeetqOHPHuED207A1vmrGos6Jr9M",
@@ -21,6 +30,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+const db = getFirestore(app); 
 const googleProvider = new GoogleAuthProvider();
 
 const authOverlay = document.getElementById('authOverlay');
@@ -39,10 +49,9 @@ const currentUserDisplay = document.getElementById('currentUserDisplay');
 
 let appUser = null;
 let myName = "User"; 
-let isHost = false; 
 let globalRooms = [];
 
-onAuthStateChanged(auth, (user) => {
+onAuthStateChanged(auth, async (user) => {
     if (user) {
         appUser = user;
         myName = user.displayName || (user.email ? user.email.split('@')[0] : "User");
@@ -52,6 +61,18 @@ onAuthStateChanged(auth, (user) => {
         lobbySection.style.display = 'block'; 
         roomSection.style.display = 'none';
         currentUserDisplay.innerText = myName; 
+
+        // FETCH USER PROFILE FROM FIRESTORE
+        try {
+            const userDoc = await getDoc(doc(db, "users", user.uid));
+            if (userDoc.exists()) {
+                const data = userDoc.data();
+                document.getElementById('profileBioInput').value = data.bio || "";
+                document.getElementById('profileGenreSelect').value = data.favoriteGenre || "Sci-Fi & Fantasy";
+            }
+        } catch (error) {
+            console.error("Error fetching profile:", error);
+        }
     } else {
         appUser = null;
         myName = "User";
@@ -80,7 +101,9 @@ googleLoginBtn.addEventListener('click', () => {
 
 logoutBtn.addEventListener('click', () => { signOut(auth); });
 
-// Profile Modal Toggles
+// ==========================================
+// PROFILE MODAL & DATABASE SAVING
+// ==========================================
 const openProfileBtn = document.getElementById('openProfileBtn');
 const profileModal = document.getElementById('profileModal');
 const closeProfileBtn = document.getElementById('closeProfileBtn');
@@ -88,9 +111,30 @@ const saveProfileBtn = document.getElementById('saveProfileBtn');
 
 openProfileBtn.addEventListener('click', () => profileModal.style.display = 'flex');
 closeProfileBtn.addEventListener('click', () => profileModal.style.display = 'none');
-saveProfileBtn.addEventListener('click', () => {
-    alert("Profile saved locally! (Database sync coming soon)");
-    profileModal.style.display = 'none';
+
+// SAVE PROFILE TO FIRESTORE
+saveProfileBtn.addEventListener('click', async () => {
+    if (!appUser) return;
+    saveProfileBtn.innerText = "Saving...";
+    
+    const bio = document.getElementById('profileBioInput').value;
+    const genre = document.getElementById('profileGenreSelect').value;
+
+    try {
+        await setDoc(doc(db, "users", appUser.uid), {
+            displayName: myName,
+            bio: bio,
+            favoriteGenre: genre
+        }, { merge: true });
+        
+        alert("Profile saved successfully!");
+        profileModal.style.display = 'none';
+    } catch (error) {
+        console.error("Error saving profile:", error);
+        alert("Failed to save profile. Make sure Firestore is enabled.");
+    }
+    
+    saveProfileBtn.innerText = "Save Profile";
 });
 
 // Icebreaker Logic
@@ -136,7 +180,6 @@ const publicRoomsList = document.getElementById('publicRoomsList');
 const filterCategory = document.getElementById('filterCategory');
 const roomDisplay = document.getElementById('roomDisplay');
 const leaveRoomBtn = document.getElementById('leaveRoomBtn');
-const hostBadge = document.getElementById('hostBadge');
 let currentRoom = null;
 
 function enterRoom(roomId, isPublic = false, category = 'Movie Night', isCreating = false) {
@@ -165,19 +208,6 @@ joinPrivateRoomBtn.addEventListener('click', () => {
 });
 
 leaveRoomBtn.addEventListener('click', () => { window.location.reload(); });
-
-socket.on('set_host_status', (status) => {
-    isHost = status;
-    if (isHost) {
-        hostBadge.innerText = "👑 HOST";
-        hostBadge.style.background = "#10b981";
-        hostBadge.style.color = "white";
-    } else {
-        hostBadge.innerText = "Guest";
-        hostBadge.style.background = "#fef08a";
-        hostBadge.style.color = "#111827";
-    }
-});
 
 socket.on('update_rooms', (rooms) => {
     globalRooms = rooms;
@@ -225,7 +255,7 @@ function initYouTubePlayer() {
 if (window.YT && window.YT.Player) { initYouTubePlayer(); } else { window.onYouTubeIframeAPIReady = initYouTubePlayer; }
 
 function onPlayerStateChange(event) {
-    if (ytEmitLock || !currentRoom || !isHost) return;
+    if (ytEmitLock || !currentRoom) return;
     if (event.data == YT.PlayerState.PLAYING) {
         socket.emit('play_video', currentRoom); socket.emit('seek_video', { roomId: currentRoom, time: ytPlayer.getCurrentTime() });
     } else if (event.data == YT.PlayerState.PAUSED) {
@@ -233,9 +263,21 @@ function onPlayerStateChange(event) {
     }
 }
 
-video.addEventListener('play', () => { if (currentRoom && !isYouTubeActive) { if (!isHost) { video.pause(); return alert("Only the host can control playback!"); } socket.emit('play_video', currentRoom); } });
-video.addEventListener('pause', () => { if (currentRoom && !isYouTubeActive) { if (!isHost) return; socket.emit('pause_video', currentRoom); } });
-video.addEventListener('seeked', () => { if (currentRoom && !isYouTubeActive) { if (!isHost) return; socket.emit('seek_video', { roomId: currentRoom, time: video.currentTime }); } });
+video.addEventListener('play', () => { 
+    if (currentRoom && !isYouTubeActive) {
+        socket.emit('play_video', currentRoom); 
+    } 
+});
+video.addEventListener('pause', () => { 
+    if (currentRoom && !isYouTubeActive) {
+        socket.emit('pause_video', currentRoom); 
+    } 
+});
+video.addEventListener('seeked', () => { 
+    if (currentRoom && !isYouTubeActive) {
+        socket.emit('seek_video', { roomId: currentRoom, time: video.currentTime }); 
+    } 
+});
 
 socket.on('receive_play', () => { if (isYouTubeActive && ytPlayer && ytPlayer.playVideo) { ytEmitLock = true; ytPlayer.playVideo(); setTimeout(() => ytEmitLock = false, 500); } else { video.play(); } });
 socket.on('receive_pause', () => { if (isYouTubeActive && ytPlayer && ytPlayer.pauseVideo) { ytEmitLock = true; ytPlayer.pauseVideo(); setTimeout(() => ytEmitLock = false, 500); } else { video.pause(); } });
@@ -265,14 +307,13 @@ function processVideoLink(url) {
 }
 
 loadUrlBtn.addEventListener('click', () => {
-    if (!isHost) return alert("Only the host can load new videos!");
     const url = videoUrlInput.value.trim();
     if (url && currentRoom) { processVideoLink(url); socket.emit('change_video_url', { roomId: currentRoom, url: url, isTorrent: false }); videoUrlInput.value = ''; }
 });
 
 socket.on('receive_video_url', (data) => { 
     if (data.isTorrent) {
-        appendMessage("Host started a local movie stream! Buffering...", "System");
+        appendMessage("Someone started a local movie stream! Buffering...", "System");
         wtClient.add(data.url, (torrent) => {
             const file = torrent.files.find(f => f.name.endsWith('.mp4') || f.name.endsWith('.webm') || f.name.endsWith('.mkv')) || torrent.files[0];
             file.renderTo(video);
@@ -280,11 +321,11 @@ socket.on('receive_video_url', (data) => {
             if (!isBoardOpen) { document.getElementById('ytPlayer').style.display = 'none'; document.getElementById('videoPlayer').style.display = 'block'; }
         });
     } else {
-        processVideoLink(data.url); appendMessage("The host changed the video!", "System"); 
+        processVideoLink(data.url); appendMessage("Someone changed the video!", "System"); 
     }
 });
 
-uploadBtn.addEventListener('click', () => { if (!isHost) return alert("Only the host can stream local files!"); localFileInput.click(); });
+uploadBtn.addEventListener('click', () => { localFileInput.click(); });
 localFileInput.addEventListener('change', function() {
     const file = this.files[0];
     if (file) { 
@@ -390,10 +431,9 @@ canvas.addEventListener('mousedown', onMouseDown); canvas.addEventListener('mous
 canvas.addEventListener('touchstart', onMouseDown, { passive: true }); canvas.addEventListener('touchend', onMouseUp, { passive: true }); canvas.addEventListener('touchcancel', onMouseUp, { passive: true }); canvas.addEventListener('touchmove', onMouseMove, { passive: true });
 
 socket.on('receive_draw_line', (data) => { drawLine(data.x0 * canvas.width, data.y0 * canvas.height, data.x1 * canvas.width, data.y1 * canvas.height, data.color, false); });
-clearBoardBtn.addEventListener('click', () => { if (!isHost) return alert("Only the host can clear the board!"); ctx.clearRect(0, 0, canvas.width, canvas.height); if (currentRoom) socket.emit('clear_board', currentRoom); });
+clearBoardBtn.addEventListener('click', () => { ctx.clearRect(0, 0, canvas.width, canvas.height); if (currentRoom) socket.emit('clear_board', currentRoom); });
 socket.on('receive_clear_board', () => { ctx.clearRect(0, 0, canvas.width, canvas.height); });
 
-// Pomodoro Timer
 const timerDisplay = document.getElementById('timerDisplay');
 const startTimerBtn = document.getElementById('startTimerBtn');
 const resetTimerBtn = document.getElementById('resetTimerBtn');
@@ -413,8 +453,8 @@ function startSyncTimer() {
     }, 1000);
 }
 function pauseTimer() { clearInterval(timerInterval); isTimerRunning = false; startTimerBtn.innerText = "Start Sync"; if (currentRoom) socket.emit('sync_timer', { roomId: currentRoom, timeLeft: timeLeft, isRunning: false }); }
-startTimerBtn.addEventListener('click', () => { if (!isHost) return alert("Only the host can control the focus timer!"); if (isTimerRunning) pauseTimer(); else { startSyncTimer(); if (currentRoom) socket.emit('sync_timer', { roomId: currentRoom, timeLeft: timeLeft, isRunning: true }); } });
-resetTimerBtn.addEventListener('click', () => { if (!isHost) return alert("Only the host can reset the focus timer!"); pauseTimer(); timeLeft = 25 * 60; updateTimerDisplay(); if (currentRoom) socket.emit('sync_timer', { roomId: currentRoom, timeLeft: timeLeft, isRunning: false }); });
+startTimerBtn.addEventListener('click', () => { if (isTimerRunning) pauseTimer(); else { startSyncTimer(); if (currentRoom) socket.emit('sync_timer', { roomId: currentRoom, timeLeft: timeLeft, isRunning: true }); } });
+resetTimerBtn.addEventListener('click', () => { pauseTimer(); timeLeft = 25 * 60; updateTimerDisplay(); if (currentRoom) socket.emit('sync_timer', { roomId: currentRoom, timeLeft: timeLeft, isRunning: false }); });
 socket.on('receive_sync_timer', (data) => { timeLeft = data.timeLeft; updateTimerDisplay(); if (data.isRunning && !isTimerRunning) { startSyncTimer(); } else if (!data.isRunning && isTimerRunning) { clearInterval(timerInterval); isTimerRunning = false; startTimerBtn.innerText = "Start Sync"; } });
 
 // ==========================================
