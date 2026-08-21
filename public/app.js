@@ -50,20 +50,138 @@ joinRoomBtn.addEventListener('click', () => {
 });
 
 // ==========================================
-// 2. VIDEO SYNC LOGIC
+// 2. YOUTUBE API & VIDEO SYNC LOGIC
 // ==========================================
-video.addEventListener('play', () => { if (currentRoom) socket.emit('play_video', currentRoom); });
-video.addEventListener('pause', () => { if (currentRoom) socket.emit('pause_video', currentRoom); });
-video.addEventListener('seeked', () => { if (currentRoom) socket.emit('seek_video', { roomId: currentRoom, time: video.currentTime }); });
+let ytPlayer;
+let isYouTubeActive = false;
+let ytEmitLock = false; // Prevents infinite sync loops
 
-socket.on('receive_play', () => { video.play(); });
-socket.on('receive_pause', () => { video.pause(); });
+// Initialize YouTube API automatically when script loads
+window.onYouTubeIframeAPIReady = function() {
+    ytPlayer = new YT.Player('ytPlayer', {
+        height: '100%',
+        width: '100%',
+        videoId: '', // Loads empty initially
+        events: {
+            'onStateChange': onPlayerStateChange
+        }
+    });
+}
+
+// Intercept YouTube Play/Pause Actions
+function onPlayerStateChange(event) {
+    if (ytEmitLock || !currentRoom) return;
+    
+    if (event.data == YT.PlayerState.PLAYING) {
+        socket.emit('play_video', currentRoom);
+        socket.emit('seek_video', { roomId: currentRoom, time: ytPlayer.getCurrentTime() });
+    } else if (event.data == YT.PlayerState.PAUSED) {
+        socket.emit('pause_video', currentRoom);
+    }
+}
+
+// Native Video Listeners
+video.addEventListener('play', () => { if (currentRoom && !isYouTubeActive) socket.emit('play_video', currentRoom); });
+video.addEventListener('pause', () => { if (currentRoom && !isYouTubeActive) socket.emit('pause_video', currentRoom); });
+video.addEventListener('seeked', () => { if (currentRoom && !isYouTubeActive) socket.emit('seek_video', { roomId: currentRoom, time: video.currentTime }); });
+
+// Sync Listeners
+socket.on('receive_play', () => {
+    if (isYouTubeActive && ytPlayer && ytPlayer.playVideo) {
+        ytEmitLock = true; 
+        ytPlayer.playVideo(); 
+        setTimeout(() => ytEmitLock = false, 500);
+    } else {
+        video.play();
+    }
+});
+
+socket.on('receive_pause', () => {
+    if (isYouTubeActive && ytPlayer && ytPlayer.pauseVideo) {
+        ytEmitLock = true; 
+        ytPlayer.pauseVideo(); 
+        setTimeout(() => ytEmitLock = false, 500);
+    } else {
+        video.pause();
+    }
+});
+
 socket.on('receive_seek', (time) => {
-    if (Math.abs(video.currentTime - time) > 1) video.currentTime = time;
+    if (isYouTubeActive && ytPlayer && ytPlayer.seekTo) {
+        if (Math.abs(ytPlayer.getCurrentTime() - time) > 2) {
+            ytEmitLock = true; 
+            ytPlayer.seekTo(time, true); 
+            setTimeout(() => ytEmitLock = false, 500);
+        }
+    } else {
+        if (Math.abs(video.currentTime - time) > 1) video.currentTime = time;
+    }
 });
 
 // ==========================================
-// 3. CHAT LOGIC
+// 3. CUSTOM URL LOGIC (YOUTUBE PARSER)
+// ==========================================
+const videoUrlInput = document.getElementById('videoUrlInput');
+const loadUrlBtn = document.getElementById('loadUrlBtn');
+const localFileInput = document.getElementById('localFileInput');
+const uploadBtn = document.getElementById('uploadBtn');
+
+// Helper to extract the 11-character YouTube ID from any format
+function parseYouTubeId(url) {
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+    const match = url.match(regExp);
+    return (match && match[2].length === 11) ? match[2] : null;
+}
+
+function processVideoLink(url) {
+    const ytId = parseYouTubeId(url);
+    if (ytId) {
+        // Switch to YouTube Player UI
+        isYouTubeActive = true;
+        document.getElementById('videoPlayer').style.display = 'none';
+        document.getElementById('ytPlayer').style.display = 'block';
+        
+        if (ytPlayer && ytPlayer.loadVideoById) {
+            ytEmitLock = true;
+            ytPlayer.loadVideoById(ytId);
+            setTimeout(() => ytEmitLock = false, 500);
+        }
+    } else {
+        // Switch to Native HTML5 Player UI
+        isYouTubeActive = false;
+        document.getElementById('ytPlayer').style.display = 'none';
+        document.getElementById('videoPlayer').style.display = 'block';
+        video.src = url;
+    }
+}
+
+loadUrlBtn.addEventListener('click', () => {
+    const url = videoUrlInput.value.trim();
+    if (url && currentRoom) {
+        processVideoLink(url);
+        socket.emit('change_video_url', { roomId: currentRoom, url: url });
+        videoUrlInput.value = ''; 
+    } else if (!currentRoom) {
+        alert("Please join a room first!");
+    }
+});
+
+socket.on('receive_video_url', (newUrl) => {
+    processVideoLink(newUrl);
+    appendMessage("The host changed the video!", "System");
+});
+
+uploadBtn.addEventListener('click', () => { localFileInput.click(); });
+localFileInput.addEventListener('change', function() {
+    const file = this.files[0];
+    if (file) {
+        processVideoLink(URL.createObjectURL(file));
+        alert("Playing local file! (Note: Friends won't see this unless you Share Screen).");
+    }
+});
+
+// ==========================================
+// 4. CHAT LOGIC
 // ==========================================
 const chatInput = document.getElementById('chatInput');
 const sendChatBtn = document.getElementById('sendChatBtn');
@@ -73,7 +191,6 @@ function appendMessage(msg, sender) {
     const msgElement = document.createElement('div');
     msgElement.classList.add('chat-message');
     
-    // THE FIX: Apply correct class based on the sender
     if (sender === "You") {
         msgElement.classList.add('self');
     } else {
@@ -102,39 +219,6 @@ chatInput.addEventListener('keypress', (e) => {
 });
 
 socket.on('receive_chat', (msg) => { appendMessage(msg, "Friend"); });
-
-// ==========================================
-// 4. CUSTOM URL & LOCAL FILE LOGIC
-// ==========================================
-const videoUrlInput = document.getElementById('videoUrlInput');
-const loadUrlBtn = document.getElementById('loadUrlBtn');
-const localFileInput = document.getElementById('localFileInput');
-const uploadBtn = document.getElementById('uploadBtn');
-
-loadUrlBtn.addEventListener('click', () => {
-    const url = videoUrlInput.value.trim();
-    if (url && currentRoom) {
-        video.src = url;
-        socket.emit('change_video_url', { roomId: currentRoom, url: url });
-        videoUrlInput.value = ''; 
-    } else if (!currentRoom) {
-        alert("Please join a room first!");
-    }
-});
-
-socket.on('receive_video_url', (newUrl) => {
-    video.src = newUrl;
-    appendMessage("The host changed the video!", "System");
-});
-
-uploadBtn.addEventListener('click', () => { localFileInput.click(); });
-localFileInput.addEventListener('change', function() {
-    const file = this.files[0];
-    if (file) {
-        video.src = URL.createObjectURL(file);
-        alert("Playing local file! (Note: Friends won't see this unless you Share Screen).");
-    }
-});
 
 // ==========================================
 // 5. WEBRTC, CAMS, & AUDIO-ONLY CONTROLS
@@ -237,6 +321,10 @@ function makeVideoClickable(videoElement, stream) {
     videoElement.style.cursor = "pointer";
     videoElement.title = "Click to Pin to Center";
     videoElement.addEventListener('click', () => {
+        // Automatically hides YouTube and pins the camera feed
+        isYouTubeActive = false;
+        document.getElementById('ytPlayer').style.display = 'none';
+        document.getElementById('videoPlayer').style.display = 'block';
         video.removeAttribute('src'); 
         video.srcObject = stream;
         video.play();
@@ -275,7 +363,7 @@ camToggleBtn.addEventListener('click', () => {
 });
 
 // ------------------------------------------
-// 6. PUSH-TO-TALK (PTT) - MOBILE & DESKTOP
+// 6. PUSH-TO-TALK (PTT)
 // ------------------------------------------
 const pttToggleBtn = document.getElementById('pttToggleBtn');
 const holdToTalkBtn = document.getElementById('holdToTalkBtn');
@@ -296,7 +384,6 @@ pttToggleBtn.addEventListener('click', () => {
     else { setMicState(true); }
 });
 
-// --- Desktop Spacebar ---
 window.addEventListener('keydown', (e) => {
     if (!isPttMode || isSpacePressed) return;
     if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
@@ -321,7 +408,6 @@ window.addEventListener('keyup', (e) => {
     }
 });
 
-// --- Mobile Touch & Mouse ---
 function startTalking(e) {
     if (!isPttMode) return;
     e.preventDefault(); 
@@ -352,6 +438,9 @@ screenShareBtn.addEventListener('click', async () => {
                 screenCalls.push(screenCall);
             });
 
+            isYouTubeActive = false;
+            document.getElementById('ytPlayer').style.display = 'none';
+            document.getElementById('videoPlayer').style.display = 'block';
             video.removeAttribute('src'); 
             video.srcObject = currentScreenStream;
             video.play();
