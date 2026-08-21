@@ -72,11 +72,9 @@ io.on('connection', (socket) => {
     socket.on('draw_line', (data) => socket.to(data.roomId).emit('receive_draw_line', data));
     socket.on('clear_board', (roomId) => socket.to(roomId).emit('receive_clear_board'));
     socket.on('sync_timer', (data) => socket.to(data.roomId).emit('receive_sync_timer', data));
-    
-    // Board UI Sync
     socket.on('toggle_board', (data) => socket.to(data.roomId).emit('receive_toggle_board', data.isOpen));
 
-    // Hardware State Sync (Mute / Cam off)
+    // Hardware Sync (Mute / Cam Toggles)
     socket.on('toggle_mute', (data) => socket.to(data.roomId).emit('peer_muted', data));
     socket.on('toggle_cam', (data) => socket.to(data.roomId).emit('peer_cam_toggled', data));
 });
