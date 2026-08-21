@@ -27,101 +27,135 @@
     </div>
 
     <div class="main-wrapper" id="mainApp" style="display: none;">
-        <!-- Main Video Area -->
-        <div class="video-section">
+        
+        <!-- NEW: LOBBY UI -->
+        <div id="lobbySection" class="video-section" style="width: 100%; flex: 1; display: none;">
             <div class="room-header">
-                <h1>BINGEPLAY</h1>
-                <div class="room-controls">
-                    <button id="logoutBtn" style="background: #f43f5e; color: white; margin-right: 12px;">Log Out</button>
-                    <input type="text" id="roomInput" placeholder="Enter Room...">
-                    <button id="joinRoomBtn">Join Room</button>
-                </div>
+                <h1>LOBBY</h1>
+                <button id="logoutBtn" style="background: #f43f5e; color: white;">Log Out</button>
             </div>
-            <p>Current Room: <span id="roomDisplay">None</span> | Logged in as: <span id="currentUserDisplay" style="font-weight:700;"></span></p>
+            <p>Welcome back, <span id="currentUserDisplay" style="font-weight:700;"></span>! Join an active party or start your own.</p>
             
-            <div class="video-wrapper">
-                <video id="videoPlayer" controls></video>
-                <div id="ytPlayer" style="display: none;"></div>
-                
-                <!-- Main Screen Whiteboard -->
-                <div id="whiteboardContainer" style="display: none;">
-                    <div class="board-floating-tools">
-                        <input type="color" id="colorPicker" value="#111827">
-                        <button id="clearBoardBtn">Clear</button>
+            <div class="lobby-controls" style="display: flex; gap: 20px; margin-bottom: 30px; flex-wrap: wrap;">
+                <div style="flex: 1; background: #f9fafb; padding: 20px; border: 3px solid #111827; border-radius: 8px; box-shadow: 6px 6px 0px #111827;">
+                    <h3>Start a Party</h3>
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <input type="text" id="newRoomInput" placeholder="Room Name..." style="flex: 1;">
+                        <select id="roomVisibility" class="device-dropdown" style="width: auto;">
+                            <option value="public">Public</option>
+                            <option value="private">Private</option>
+                        </select>
+                        <button id="createRoomBtn" style="background: #10b981; color: white;">Create</button>
                     </div>
-                    <canvas id="whiteboard"></canvas>
                 </div>
-
-                <div id="reaction-container"></div>
+                
+                <div style="flex: 1; background: #f9fafb; padding: 20px; border: 3px solid #111827; border-radius: 8px; box-shadow: 6px 6px 0px #111827;">
+                    <h3>Join Private</h3>
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <input type="text" id="joinPrivateRoomInput" placeholder="Enter Private Code..." style="flex: 1;">
+                        <button id="joinPrivateRoomBtn" style="background: #3b82f6; color: white;">Join</button>
+                    </div>
+                </div>
             </div>
 
-            <div class="controls-row">
-                <input type="text" id="videoUrlInput" placeholder="Paste YouTube or .mp4 link here...">
-                <button id="loadUrlBtn">Load Video</button>
-                <button id="uploadBtn">Play Local</button>
-                <button id="openBoardBtn" style="background: #a78bfa; color: #111827;">Open Whiteboard</button>
-                <input type="file" id="localFileInput" accept="video/mp4,video/webm" style="display: none;">
+            <h3>Active Public Rooms</h3>
+            <div id="publicRoomsList" style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px; overflow-y: auto; max-height: 40vh;">
+                <!-- JavaScript will populate rooms here -->
             </div>
         </div>
 
-        <!-- Sidebar -->
-        <div class="sidebar">
-            <div class="cams">
-                <h3>Face Cams</h3>
-                <div id="video-grid">
-                    <video id="myCam" autoplay playsinline muted></video>
+        <!-- EXISTING: ROOM UI -->
+        <div id="roomSection" style="display: none; width: 100%; gap: 24px;">
+            <div class="video-section">
+                <div class="room-header">
+                    <h1>BINGEPLAY</h1>
+                    <div class="room-controls">
+                        <button id="leaveRoomBtn" style="background: #f43f5e; color: white; margin-right: 12px;">Leave Room</button>
+                    </div>
                 </div>
+                <p>Current Room: <span id="roomDisplay">None</span></p>
                 
-                <select id="cameraSelect" class="device-dropdown" style="margin-top: 12px;"></select>
-                <select id="micSelect" class="device-dropdown" style="margin-top: 8px;"></select>
-                
-                <div class="cam-controls" style="margin-top: 12px;">
-                    <button id="muteBtn">Mute Mic</button>
-                    <button id="camToggleBtn">Disable Cam</button>
-                </div>
-                <div class="cam-controls" style="margin-top: 8px;">
-                    <button id="screenShareBtn">Share Screen</button>
-                    <button id="pttToggleBtn">PTT: OFF</button>
-                </div>
-                
-                <button id="holdToTalkBtn" style="display: none; width: 100%; margin-top: 12px; font-size: 18px; padding: 16px;">
-                    🎙️ HOLD TO TALK
-                </button>
-                <p id="pttHint" style="font-size: 12px; margin-top: 6px; display: none; color: #4b5563; font-weight: 700;">
-                    Desktop: Hold <kbd style="background:#111827; color:#fff; padding: 2px 6px; border-radius: 4px;">SPACE</kbd>
-                </p>
-            </div>
+                <div class="video-wrapper">
+                    <video id="videoPlayer" controls></video>
+                    <div id="ytPlayer" style="display: none;"></div>
+                    
+                    <div id="whiteboardContainer" style="display: none;">
+                        <div class="board-floating-tools">
+                            <input type="color" id="colorPicker" value="#111827">
+                            <button id="clearBoardBtn">Clear</button>
+                        </div>
+                        <canvas id="whiteboard"></canvas>
+                    </div>
 
-            <div class="sidebar-tabs">
-                <button id="tabChatBtn" class="tab-btn active">Live Chat</button>
-                <button id="tabStudyBtn" class="tab-btn">Focus Timer</button>
-            </div>
-
-            <!-- Chat Section -->
-            <div id="chatSection" class="chat-container">
-                <div id="chatBox"></div>
-                
-                <div class="reaction-bar">
-                    <button class="reaction-btn" data-emoji="🔥">🔥</button>
-                    <button class="reaction-btn" data-emoji="😂">😂</button>
-                    <button class="reaction-btn" data-emoji="😲">😲</button>
-                    <button class="reaction-btn" data-emoji="✏️">✏️</button>
+                    <div id="reaction-container"></div>
                 </div>
 
-                <div class="chat-input-area">
-                    <input type="text" id="chatInput" placeholder="Type a message...">
-                    <button id="sendChatBtn">Send</button>
+                <div class="controls-row">
+                    <input type="text" id="videoUrlInput" placeholder="Paste YouTube or .mp4 link here...">
+                    <button id="loadUrlBtn">Load Video</button>
+                    <button id="uploadBtn">Play Local</button>
+                    <button id="openBoardBtn" style="background: #a78bfa; color: #111827;">Open Whiteboard</button>
+                    <input type="file" id="localFileInput" accept="video/mp4,video/webm" style="display: none;">
                 </div>
             </div>
 
-            <!-- Study Hub Section -->
-            <div id="studySection" class="study-container" style="display: none;">
-                <div class="timer-section" style="border: none; padding: 0;">
-                    <h3 style="margin-bottom: 8px;">Pomodoro</h3>
-                    <div class="timer-display" id="timerDisplay">25:00</div>
-                    <div class="timer-controls">
-                        <button id="startTimerBtn">Start Sync</button>
-                        <button id="resetTimerBtn">Reset</button>
+            <!-- Sidebar -->
+            <div class="sidebar">
+                <div class="cams">
+                    <h3>Face Cams</h3>
+                    <div id="video-grid">
+                        <video id="myCam" autoplay playsinline muted></video>
+                    </div>
+                    
+                    <select id="cameraSelect" class="device-dropdown" style="margin-top: 12px;"></select>
+                    <select id="micSelect" class="device-dropdown" style="margin-top: 8px;"></select>
+                    
+                    <div class="cam-controls" style="margin-top: 12px;">
+                        <button id="muteBtn">Mute Mic</button>
+                        <button id="camToggleBtn">Disable Cam</button>
+                    </div>
+                    <div class="cam-controls" style="margin-top: 8px;">
+                        <button id="screenShareBtn">Share Screen</button>
+                        <button id="pttToggleBtn">PTT: OFF</button>
+                    </div>
+                    
+                    <button id="holdToTalkBtn" style="display: none; width: 100%; margin-top: 12px; font-size: 18px; padding: 16px;">
+                        🎙️ HOLD TO TALK
+                    </button>
+                    <p id="pttHint" style="font-size: 12px; margin-top: 6px; display: none; color: #4b5563; font-weight: 700;">
+                        Desktop: Hold <kbd style="background:#111827; color:#fff; padding: 2px 6px; border-radius: 4px;">SPACE</kbd>
+                    </p>
+                </div>
+
+                <div class="sidebar-tabs">
+                    <button id="tabChatBtn" class="tab-btn active">Live Chat</button>
+                    <button id="tabStudyBtn" class="tab-btn">Focus Timer</button>
+                </div>
+
+                <div id="chatSection" class="chat-container">
+                    <div id="chatBox"></div>
+                    
+                    <div class="reaction-bar">
+                        <button class="reaction-btn" data-emoji="🔥">🔥</button>
+                        <button class="reaction-btn" data-emoji="😂">😂</button>
+                        <button class="reaction-btn" data-emoji="😲">😲</button>
+                        <button class="reaction-btn" data-emoji="✏️">✏️</button>
+                    </div>
+
+                    <div class="chat-input-area">
+                        <input type="text" id="chatInput" placeholder="Type a message...">
+                        <button id="sendChatBtn">Send</button>
+                    </div>
+                </div>
+
+                <div id="studySection" class="study-container" style="display: none;">
+                    <div class="timer-section" style="border: none; padding: 0;">
+                        <h3 style="margin-bottom: 8px;">Pomodoro</h3>
+                        <div class="timer-display" id="timerDisplay">25:00</div>
+                        <div class="timer-controls">
+                            <button id="startTimerBtn">Start Sync</button>
+                            <button id="resetTimerBtn">Reset</button>
+                        </div>
                     </div>
                 </div>
             </div>
