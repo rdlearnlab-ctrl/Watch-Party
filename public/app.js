@@ -2,7 +2,7 @@ const socket = io();
 const video = document.getElementById('videoPlayer');
 
 // ==========================================
-// PEERJS INITIALIZATION (SECURE & STUN)
+// PEERJS INITIALIZATION
 // ==========================================
 const peer = new Peer({
     host: '0.peerjs.com',
@@ -54,24 +54,19 @@ joinRoomBtn.addEventListener('click', () => {
 // ==========================================
 let ytPlayer;
 let isYouTubeActive = false;
-let ytEmitLock = false; // Prevents infinite sync loops
+let ytEmitLock = false;
 
-// Initialize YouTube API automatically when script loads
 window.onYouTubeIframeAPIReady = function() {
     ytPlayer = new YT.Player('ytPlayer', {
         height: '100%',
         width: '100%',
-        videoId: '', // Loads empty initially
-        events: {
-            'onStateChange': onPlayerStateChange
-        }
+        videoId: '',
+        events: { 'onStateChange': onPlayerStateChange }
     });
 }
 
-// Intercept YouTube Play/Pause Actions
 function onPlayerStateChange(event) {
     if (ytEmitLock || !currentRoom) return;
-    
     if (event.data == YT.PlayerState.PLAYING) {
         socket.emit('play_video', currentRoom);
         socket.emit('seek_video', { roomId: currentRoom, time: ytPlayer.getCurrentTime() });
@@ -80,53 +75,37 @@ function onPlayerStateChange(event) {
     }
 }
 
-// Native Video Listeners
 video.addEventListener('play', () => { if (currentRoom && !isYouTubeActive) socket.emit('play_video', currentRoom); });
 video.addEventListener('pause', () => { if (currentRoom && !isYouTubeActive) socket.emit('pause_video', currentRoom); });
 video.addEventListener('seeked', () => { if (currentRoom && !isYouTubeActive) socket.emit('seek_video', { roomId: currentRoom, time: video.currentTime }); });
 
-// Sync Listeners
 socket.on('receive_play', () => {
     if (isYouTubeActive && ytPlayer && ytPlayer.playVideo) {
-        ytEmitLock = true; 
-        ytPlayer.playVideo(); 
-        setTimeout(() => ytEmitLock = false, 500);
-    } else {
-        video.play();
-    }
+        ytEmitLock = true; ytPlayer.playVideo(); setTimeout(() => ytEmitLock = false, 500);
+    } else { video.play(); }
 });
 
 socket.on('receive_pause', () => {
     if (isYouTubeActive && ytPlayer && ytPlayer.pauseVideo) {
-        ytEmitLock = true; 
-        ytPlayer.pauseVideo(); 
-        setTimeout(() => ytEmitLock = false, 500);
-    } else {
-        video.pause();
-    }
+        ytEmitLock = true; ytPlayer.pauseVideo(); setTimeout(() => ytEmitLock = false, 500);
+    } else { video.pause(); }
 });
 
 socket.on('receive_seek', (time) => {
     if (isYouTubeActive && ytPlayer && ytPlayer.seekTo) {
         if (Math.abs(ytPlayer.getCurrentTime() - time) > 2) {
-            ytEmitLock = true; 
-            ytPlayer.seekTo(time, true); 
-            setTimeout(() => ytEmitLock = false, 500);
+            ytEmitLock = true; ytPlayer.seekTo(time, true); setTimeout(() => ytEmitLock = false, 500);
         }
     } else {
         if (Math.abs(video.currentTime - time) > 1) video.currentTime = time;
     }
 });
 
-// ==========================================
-// 3. CUSTOM URL LOGIC (YOUTUBE PARSER)
-// ==========================================
 const videoUrlInput = document.getElementById('videoUrlInput');
 const loadUrlBtn = document.getElementById('loadUrlBtn');
 const localFileInput = document.getElementById('localFileInput');
 const uploadBtn = document.getElementById('uploadBtn');
 
-// Helper to extract the 11-character YouTube ID from any format
 function parseYouTubeId(url) {
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
     const match = url.match(regExp);
@@ -136,18 +115,13 @@ function parseYouTubeId(url) {
 function processVideoLink(url) {
     const ytId = parseYouTubeId(url);
     if (ytId) {
-        // Switch to YouTube Player UI
         isYouTubeActive = true;
         document.getElementById('videoPlayer').style.display = 'none';
         document.getElementById('ytPlayer').style.display = 'block';
-        
         if (ytPlayer && ytPlayer.loadVideoById) {
-            ytEmitLock = true;
-            ytPlayer.loadVideoById(ytId);
-            setTimeout(() => ytEmitLock = false, 500);
+            ytEmitLock = true; ytPlayer.loadVideoById(ytId); setTimeout(() => ytEmitLock = false, 500);
         }
     } else {
-        // Switch to Native HTML5 Player UI
         isYouTubeActive = false;
         document.getElementById('ytPlayer').style.display = 'none';
         document.getElementById('videoPlayer').style.display = 'block';
@@ -161,9 +135,7 @@ loadUrlBtn.addEventListener('click', () => {
         processVideoLink(url);
         socket.emit('change_video_url', { roomId: currentRoom, url: url });
         videoUrlInput.value = ''; 
-    } else if (!currentRoom) {
-        alert("Please join a room first!");
-    }
+    } else if (!currentRoom) { alert("Please join a room first!"); }
 });
 
 socket.on('receive_video_url', (newUrl) => {
@@ -181,8 +153,28 @@ localFileInput.addEventListener('change', function() {
 });
 
 // ==========================================
-// 4. CHAT LOGIC
+// 3. TABS & CHAT LOGIC
 // ==========================================
+const tabChatBtn = document.getElementById('tabChatBtn');
+const tabStudyBtn = document.getElementById('tabStudyBtn');
+const chatSection = document.getElementById('chatSection');
+const studySection = document.getElementById('studySection');
+
+tabChatBtn.addEventListener('click', () => {
+    tabChatBtn.classList.add('active');
+    tabStudyBtn.classList.remove('active');
+    chatSection.style.display = 'flex';
+    studySection.style.display = 'none';
+});
+
+tabStudyBtn.addEventListener('click', () => {
+    tabStudyBtn.classList.add('active');
+    tabChatBtn.classList.remove('active');
+    studySection.style.display = 'flex';
+    chatSection.style.display = 'none';
+    resizeCanvas(); // Ensure canvas fits available space when opened
+});
+
 const chatInput = document.getElementById('chatInput');
 const sendChatBtn = document.getElementById('sendChatBtn');
 const chatBox = document.getElementById('chatBox');
@@ -190,13 +182,7 @@ const chatBox = document.getElementById('chatBox');
 function appendMessage(msg, sender) {
     const msgElement = document.createElement('div');
     msgElement.classList.add('chat-message');
-    
-    if (sender === "You") {
-        msgElement.classList.add('self');
-    } else {
-        msgElement.classList.add('other');
-    }
-    
+    msgElement.classList.add(sender === "You" ? 'self' : 'other');
     msgElement.innerHTML = `<strong>${sender}:</strong> ${msg}`;
     chatBox.appendChild(msgElement);
     chatBox.scrollTop = chatBox.scrollHeight; 
@@ -211,17 +197,180 @@ sendChatBtn.addEventListener('click', () => {
     }
 });
 
-chatInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-        e.preventDefault(); 
-        sendChatBtn.click(); 
-    }
-});
-
+chatInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') { e.preventDefault(); sendChatBtn.click(); } });
 socket.on('receive_chat', (msg) => { appendMessage(msg, "Friend"); });
 
 // ==========================================
-// 5. WEBRTC, CAMS, & AUDIO-ONLY CONTROLS
+// 4. STUDY HUB: WHITEBOARD LOGIC
+// ==========================================
+const canvas = document.getElementById('whiteboard');
+const ctx = canvas.getContext('2d');
+const colorPicker = document.getElementById('colorPicker');
+const clearBoardBtn = document.getElementById('clearBoardBtn');
+
+let isDrawing = false;
+let current = { x: 0, y: 0 };
+
+function resizeCanvas() {
+    // Math to sync rendering coordinates with CSS layout size
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+
+function drawLine(x0, y0, x1, y1, color, emit) {
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+    ctx.closePath();
+
+    if (!emit || !currentRoom) return;
+    
+    // Convert to percentages so drawing scales on friends screens
+    const w = canvas.width;
+    const h = canvas.height;
+    socket.emit('draw_line', {
+        roomId: currentRoom,
+        x0: x0 / w, y0: y0 / h,
+        x1: x1 / w, y1: y1 / h,
+        color: color
+    });
+}
+
+const getEventPos = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const evt = e.touches ? e.touches[0] : e;
+    return {
+        x: evt.clientX - rect.left,
+        y: evt.clientY - rect.top
+    };
+};
+
+const onMouseDown = (e) => {
+    isDrawing = true;
+    const pos = getEventPos(e);
+    current.x = pos.x; current.y = pos.y;
+};
+
+const onMouseUp = (e) => {
+    if (!isDrawing) return;
+    isDrawing = false;
+    const pos = getEventPos(e);
+    drawLine(current.x, current.y, pos.x, pos.y, colorPicker.value, true);
+};
+
+const onMouseMove = (e) => {
+    if (!isDrawing) return;
+    const pos = getEventPos(e);
+    drawLine(current.x, current.y, pos.x, pos.y, colorPicker.value, true);
+    current.x = pos.x; current.y = pos.y;
+};
+
+canvas.addEventListener('mousedown', onMouseDown);
+canvas.addEventListener('mouseup', onMouseUp);
+canvas.addEventListener('mouseout', onMouseUp);
+canvas.addEventListener('mousemove', onMouseMove);
+
+canvas.addEventListener('touchstart', onMouseDown, { passive: true });
+canvas.addEventListener('touchend', onMouseUp, { passive: true });
+canvas.addEventListener('touchcancel', onMouseUp, { passive: true });
+canvas.addEventListener('touchmove', onMouseMove, { passive: true });
+
+socket.on('receive_draw_line', (data) => {
+    const w = canvas.width;
+    const h = canvas.height;
+    drawLine(data.x0 * w, data.y0 * h, data.x1 * w, data.y1 * h, data.color, false);
+});
+
+clearBoardBtn.addEventListener('click', () => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (currentRoom) socket.emit('clear_board', currentRoom);
+});
+
+socket.on('receive_clear_board', () => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+});
+
+// ==========================================
+// 5. STUDY HUB: POMODORO TIMER LOGIC
+// ==========================================
+const timerDisplay = document.getElementById('timerDisplay');
+const startTimerBtn = document.getElementById('startTimerBtn');
+const resetTimerBtn = document.getElementById('resetTimerBtn');
+
+let timerInterval;
+let timeLeft = 25 * 60; // 25 Minutes
+let isTimerRunning = false;
+
+function updateTimerDisplay() {
+    const minutes = Math.floor(timeLeft / 60);
+    const seconds = timeLeft % 60;
+    timerDisplay.innerText = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+}
+
+function startSyncTimer() {
+    if (isTimerRunning) return;
+    isTimerRunning = true;
+    startTimerBtn.innerText = "Pause Sync";
+    
+    timerInterval = setInterval(() => {
+        if (timeLeft > 0) {
+            timeLeft--;
+            updateTimerDisplay();
+            // Emit sync every 5 seconds to keep the room aligned
+            if (timeLeft % 5 === 0 && currentRoom) {
+                socket.emit('sync_timer', { roomId: currentRoom, timeLeft: timeLeft, isRunning: isTimerRunning });
+            }
+        } else {
+            clearInterval(timerInterval);
+            isTimerRunning = false;
+            startTimerBtn.innerText = "Start Sync";
+            alert("Focus session complete!");
+        }
+    }, 1000);
+}
+
+function pauseTimer() {
+    clearInterval(timerInterval);
+    isTimerRunning = false;
+    startTimerBtn.innerText = "Start Sync";
+    if (currentRoom) socket.emit('sync_timer', { roomId: currentRoom, timeLeft: timeLeft, isRunning: false });
+}
+
+startTimerBtn.addEventListener('click', () => {
+    if (isTimerRunning) pauseTimer();
+    else {
+        startSyncTimer();
+        if (currentRoom) socket.emit('sync_timer', { roomId: currentRoom, timeLeft: timeLeft, isRunning: true });
+    }
+});
+
+resetTimerBtn.addEventListener('click', () => {
+    pauseTimer();
+    timeLeft = 25 * 60;
+    updateTimerDisplay();
+    if (currentRoom) socket.emit('sync_timer', { roomId: currentRoom, timeLeft: timeLeft, isRunning: false });
+});
+
+socket.on('receive_sync_timer', (data) => {
+    timeLeft = data.timeLeft;
+    updateTimerDisplay();
+    
+    if (data.isRunning && !isTimerRunning) {
+        startSyncTimer();
+    } else if (!data.isRunning && isTimerRunning) {
+        clearInterval(timerInterval);
+        isTimerRunning = false;
+        startTimerBtn.innerText = "Start Sync";
+    }
+});
+
+// ==========================================
+// 6. WEBRTC & HARDWARE CONTROLS
 // ==========================================
 const videoGrid = document.getElementById('video-grid');
 const myCam = document.getElementById('myCam');
@@ -245,13 +394,10 @@ async function startLocalVideo() {
         makeVideoClickable(myCam, localStream);
 
         const devices = await navigator.mediaDevices.enumerateDevices();
-        cameraSelect.innerHTML = '';
-        micSelect.innerHTML = '';
-
+        cameraSelect.innerHTML = ''; micSelect.innerHTML = '';
         devices.forEach(device => {
             const option = document.createElement('option');
             option.value = device.deviceId;
-            
             if (device.kind === 'videoinput') {
                 option.text = device.label || 'Camera ' + (cameraSelect.length + 1);
                 cameraSelect.appendChild(option);
@@ -264,13 +410,13 @@ async function startLocalVideo() {
         peer.on('call', (call) => {
             call.answer(localStream); 
             const newFriendCam = document.createElement('video');
-            
             if (call.metadata && call.metadata.type === 'screenshare') {
                 call.on('stream', (friendStream) => {
                     addVideoStream(newFriendCam, friendStream);
-                    video.removeAttribute('src'); 
-                    video.srcObject = friendStream;
-                    video.play();
+                    isYouTubeActive = false;
+                    document.getElementById('ytPlayer').style.display = 'none';
+                    document.getElementById('videoPlayer').style.display = 'block';
+                    video.removeAttribute('src'); video.srcObject = friendStream; video.play();
                 });
             } else {
                 activeCalls.push(call); 
@@ -278,23 +424,17 @@ async function startLocalVideo() {
             }
             call.on('close', () => { newFriendCam.remove(); });
         });
-
-    } catch (error) {
-        console.error("Fatal error accessing media devices:", error);
-    }
+    } catch (error) { console.error("Error accessing media:", error); }
 }
 
 startLocalVideo();
 
-socket.on('user_connected', (newPeerId) => {
-    connectToNewUser(newPeerId, localStream);
-});
+socket.on('user_connected', (newPeerId) => { connectToNewUser(newPeerId, localStream); });
 
 function connectToNewUser(peerId, stream) {
     const call = peer.call(peerId, stream); 
     activeCalls.push(call); 
     const newFriendCam = document.createElement('video');
-    
     call.on('stream', (friendStream) => { addVideoStream(newFriendCam, friendStream); });
     call.on('close', () => { newFriendCam.remove(); });
 
@@ -305,151 +445,82 @@ function connectToNewUser(peerId, stream) {
 }
 
 function addVideoStream(videoElement, stream) {
-    videoElement.srcObject = stream;
-    videoElement.autoplay = true;
-    videoElement.playsInline = true;
+    videoElement.srcObject = stream; videoElement.autoplay = true; videoElement.playsInline = true;
     makeVideoClickable(videoElement, stream);
-    
     let exists = false;
-    for (let i = 0; i < videoGrid.children.length; i++) {
-        if (videoGrid.children[i].srcObject === stream) exists = true;
-    }
+    for (let i = 0; i < videoGrid.children.length; i++) { if (videoGrid.children[i].srcObject === stream) exists = true; }
     if (!exists) videoGrid.append(videoElement);
 }
 
 function makeVideoClickable(videoElement, stream) {
-    videoElement.style.cursor = "pointer";
-    videoElement.title = "Click to Pin to Center";
+    videoElement.style.cursor = "pointer"; videoElement.title = "Click to Pin to Center";
     videoElement.addEventListener('click', () => {
-        // Automatically hides YouTube and pins the camera feed
         isYouTubeActive = false;
         document.getElementById('ytPlayer').style.display = 'none';
         document.getElementById('videoPlayer').style.display = 'block';
-        video.removeAttribute('src'); 
-        video.srcObject = stream;
-        video.play();
+        video.removeAttribute('src'); video.srcObject = stream; video.play();
     });
 }
 
-// ------------------------------------------
-// HARDWARE CONTROLS (MIC & CAM)
-// ------------------------------------------
 function setMicState(enabled) {
     if (!localStream) return;
     const audioTrack = localStream.getAudioTracks()[0];
     if (audioTrack) {
-        audioTrack.enabled = enabled;
-        muteBtn.innerText = enabled ? "Mute Mic" : "Unmute Mic";
-        if (enabled) { muteBtn.classList.add('talking'); } 
-        else { muteBtn.classList.remove('talking'); }
+        audioTrack.enabled = enabled; muteBtn.innerText = enabled ? "Mute Mic" : "Unmute Mic";
+        if (enabled) { muteBtn.classList.add('talking'); } else { muteBtn.classList.remove('talking'); }
     }
 }
 
 muteBtn.addEventListener('click', () => {
     if (!localStream || isPttMode) return;
-    const audioTrack = localStream.getAudioTracks()[0];
-    setMicState(!audioTrack.enabled);
+    setMicState(!localStream.getAudioTracks()[0].enabled);
 });
 
 camToggleBtn.addEventListener('click', () => {
     if (!localStream) return;
     const videoTrack = localStream.getVideoTracks()[0];
     if (videoTrack) {
-        isCamEnabled = !isCamEnabled;
-        videoTrack.enabled = isCamEnabled;
+        isCamEnabled = !isCamEnabled; videoTrack.enabled = isCamEnabled;
         camToggleBtn.innerText = isCamEnabled ? "Disable Cam" : "Enable Cam";
         myCam.classList.toggle('video-off', !isCamEnabled);
     }
 });
 
-// ------------------------------------------
-// 6. PUSH-TO-TALK (PTT)
-// ------------------------------------------
 const pttToggleBtn = document.getElementById('pttToggleBtn');
 const holdToTalkBtn = document.getElementById('holdToTalkBtn');
 const pttHint = document.getElementById('pttHint');
-
 let isPttMode = false;
 let isSpacePressed = false;
 
 pttToggleBtn.addEventListener('click', () => {
-    isPttMode = !isPttMode;
-    pttToggleBtn.innerText = isPttMode ? "PTT: ON" : "PTT: OFF";
-    pttToggleBtn.classList.toggle('active', isPttMode);
-    
-    holdToTalkBtn.style.display = isPttMode ? "block" : "none";
-    pttHint.style.display = isPttMode ? "block" : "none";
-
-    if (isPttMode) { setMicState(false); } 
-    else { setMicState(true); }
+    isPttMode = !isPttMode; pttToggleBtn.innerText = isPttMode ? "PTT: ON" : "PTT: OFF"; pttToggleBtn.classList.toggle('active', isPttMode);
+    holdToTalkBtn.style.display = isPttMode ? "block" : "none"; pttHint.style.display = isPttMode ? "block" : "none";
+    setMicState(!isPttMode);
 });
 
 window.addEventListener('keydown', (e) => {
-    if (!isPttMode || isSpacePressed) return;
-    if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
-    if (e.code === 'Space') {
-        e.preventDefault();
-        isSpacePressed = true;
-        setMicState(true);
-        holdToTalkBtn.style.background = "#10b981"; 
-        holdToTalkBtn.style.color = "white";
-    }
+    if (!isPttMode || isSpacePressed || ['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+    if (e.code === 'Space') { e.preventDefault(); isSpacePressed = true; setMicState(true); holdToTalkBtn.style.background = "#10b981"; holdToTalkBtn.style.color = "white"; }
 });
 
 window.addEventListener('keyup', (e) => {
-    if (!isPttMode) return;
-    if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
-    if (e.code === 'Space') {
-        e.preventDefault();
-        isSpacePressed = false;
-        setMicState(false);
-        holdToTalkBtn.style.background = ""; 
-        holdToTalkBtn.style.color = "";
-    }
+    if (!isPttMode || ['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+    if (e.code === 'Space') { e.preventDefault(); isSpacePressed = false; setMicState(false); holdToTalkBtn.style.background = ""; holdToTalkBtn.style.color = ""; }
 });
 
-function startTalking(e) {
-    if (!isPttMode) return;
-    e.preventDefault(); 
-    setMicState(true);
-}
-function stopTalking(e) {
-    if (!isPttMode) return;
-    e.preventDefault();
-    setMicState(false);
-}
+function startTalking(e) { if (!isPttMode) return; e.preventDefault(); setMicState(true); }
+function stopTalking(e) { if (!isPttMode) return; e.preventDefault(); setMicState(false); }
+holdToTalkBtn.addEventListener('mousedown', startTalking); holdToTalkBtn.addEventListener('mouseup', stopTalking); holdToTalkBtn.addEventListener('mouseleave', stopTalking);
+holdToTalkBtn.addEventListener('touchstart', startTalking, { passive: false }); holdToTalkBtn.addEventListener('touchend', stopTalking, { passive: false }); holdToTalkBtn.addEventListener('touchcancel', stopTalking, { passive: false });
 
-holdToTalkBtn.addEventListener('mousedown', startTalking);
-holdToTalkBtn.addEventListener('mouseup', stopTalking);
-holdToTalkBtn.addEventListener('mouseleave', stopTalking);
-holdToTalkBtn.addEventListener('touchstart', startTalking, { passive: false });
-holdToTalkBtn.addEventListener('touchend', stopTalking, { passive: false });
-holdToTalkBtn.addEventListener('touchcancel', stopTalking, { passive: false });
-
-// ------------------------------------------
-// SCREEN SHARE & DEVICE SWITCHING
-// ------------------------------------------
 screenShareBtn.addEventListener('click', async () => {
     if (!isScreenSharing) {
         try {
             currentScreenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-            activeCalls.forEach(call => {
-                const screenCall = peer.call(call.peer, currentScreenStream, { metadata: { type: 'screenshare' } });
-                screenCalls.push(screenCall);
-            });
-
-            isYouTubeActive = false;
-            document.getElementById('ytPlayer').style.display = 'none';
-            document.getElementById('videoPlayer').style.display = 'block';
-            video.removeAttribute('src'); 
-            video.srcObject = currentScreenStream;
-            video.play();
-            
-            isScreenSharing = true;
-            screenShareBtn.innerText = "Stop Sharing";
-            screenShareBtn.style.background = "#f43f5e"; 
-            screenShareBtn.style.color = "white";
-
+            activeCalls.forEach(call => { screenCalls.push(peer.call(call.peer, currentScreenStream, { metadata: { type: 'screenshare' } })); });
+            isYouTubeActive = false; document.getElementById('ytPlayer').style.display = 'none'; document.getElementById('videoPlayer').style.display = 'block';
+            video.removeAttribute('src'); video.srcObject = currentScreenStream; video.play();
+            isScreenSharing = true; screenShareBtn.innerText = "Stop Sharing"; screenShareBtn.style.background = "#f43f5e"; screenShareBtn.style.color = "white";
             if (currentRoom) socket.emit('send_chat', { roomId: currentRoom, message: "I am sharing my screen!" });
             currentScreenStream.getVideoTracks()[0].onended = () => { stopScreenShare(); };
         } catch (error) { console.error("Error sharing screen:", error); }
@@ -459,48 +530,25 @@ screenShareBtn.addEventListener('click', async () => {
 function stopScreenShare() {
     if (!isScreenSharing) return;
     if (currentScreenStream) currentScreenStream.getTracks().forEach(track => track.stop()); 
-    
-    screenCalls.forEach(call => call.close());
-    screenCalls = [];
-    currentScreenStream = null;
-    video.srcObject = null;
-    isScreenSharing = false;
-    screenShareBtn.innerText = "Share Screen";
-    screenShareBtn.style.background = ""; 
-    screenShareBtn.style.color = "";
+    screenCalls.forEach(call => call.close()); screenCalls = []; currentScreenStream = null; video.srcObject = null;
+    isScreenSharing = false; screenShareBtn.innerText = "Share Screen"; screenShareBtn.style.background = ""; screenShareBtn.style.color = "";
 }
 
 async function switchDevice() {
     if (isScreenSharing) return; 
-    const audioSource = micSelect.value;
-    const videoSource = cameraSelect.value;
-    const constraints = {
-        audio: { deviceId: audioSource ? { exact: audioSource } : undefined },
-        video: { deviceId: videoSource ? { exact: videoSource } : undefined }
-    };
-
+    const constraints = { audio: { deviceId: micSelect.value ? { exact: micSelect.value } : undefined }, video: { deviceId: cameraSelect.value ? { exact: cameraSelect.value } : undefined } };
     try {
         const newStream = await navigator.mediaDevices.getUserMedia(constraints);
         myCam.srcObject = newStream;
-
-        const newVideoTrack = newStream.getVideoTracks()[0];
-        const newAudioTrack = newStream.getAudioTracks()[0];
-
+        const newVideoTrack = newStream.getVideoTracks()[0]; const newAudioTrack = newStream.getAudioTracks()[0];
         activeCalls.forEach(call => {
-            const senderVideo = call.peerConnection.getSenders().find(s => s.track.kind === 'video');
-            const senderAudio = call.peerConnection.getSenders().find(s => s.track.kind === 'audio');
-            if (senderVideo) senderVideo.replaceTrack(newVideoTrack);
-            if (senderAudio) senderAudio.replaceTrack(newAudioTrack);
+            const senderVideo = call.peerConnection.getSenders().find(s => s.track.kind === 'video'); const senderAudio = call.peerConnection.getSenders().find(s => s.track.kind === 'audio');
+            if (senderVideo) senderVideo.replaceTrack(newVideoTrack); if (senderAudio) senderAudio.replaceTrack(newAudioTrack);
         });
-
-        localStream.getTracks().forEach(track => track.stop());
-        localStream = newStream;
-        makeVideoClickable(myCam, localStream);
+        localStream.getTracks().forEach(track => track.stop()); localStream = newStream; makeVideoClickable(myCam, localStream);
     } catch (err) { console.error("Error switching devices", err); }
 }
-
-cameraSelect.addEventListener('change', switchDevice);
-micSelect.addEventListener('change', switchDevice);
+cameraSelect.addEventListener('change', switchDevice); micSelect.addEventListener('change', switchDevice);
 
 // ==========================================
 // 7. FLOATING REACTIONS LOGIC
@@ -511,8 +559,7 @@ const reactionContainer = document.getElementById('reaction-container');
 if (reactionBtns.length > 0 && reactionContainer) {
     reactionBtns.forEach(btn => {
         btn.addEventListener('click', () => {
-            const emoji = btn.getAttribute('data-emoji');
-            showReaction(emoji);
+            const emoji = btn.getAttribute('data-emoji'); showReaction(emoji);
             if (currentRoom) socket.emit('send_reaction', { roomId: currentRoom, emoji: emoji });
         });
     });
@@ -521,11 +568,7 @@ if (reactionBtns.length > 0 && reactionContainer) {
 
 function showReaction(emoji) {
     if (!reactionContainer) return;
-    const el = document.createElement('div');
-    el.classList.add('floating-emoji');
-    el.innerText = emoji;
-    const randomX = Math.floor(Math.random() * 80) + 10; 
-    el.style.left = `${randomX}%`;
-    reactionContainer.appendChild(el);
+    const el = document.createElement('div'); el.classList.add('floating-emoji'); el.innerText = emoji;
+    el.style.left = `${Math.floor(Math.random() * 80) + 10}%`; reactionContainer.appendChild(el);
     setTimeout(() => { el.remove(); }, 2500);
-}
+}s
