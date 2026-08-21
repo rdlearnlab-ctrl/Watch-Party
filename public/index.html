@@ -9,6 +9,7 @@
     <script src="/socket.io/socket.io.js"></script>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="https://www.youtube.com/iframe_api"></script>
+    <script src="https://cdn.jsdelivr.net/npm/webtorrent@latest/webtorrent.min.js"></script>
 </head>
 <body>
     <!-- Firebase Auth Modal -->
@@ -28,7 +29,7 @@
 
     <div class="main-wrapper" id="mainApp" style="display: none;">
         
-        <!-- NEW: LOBBY UI -->
+        <!-- LOBBY UI -->
         <div id="lobbySection" class="video-section" style="width: 100%; flex: 1; display: none;">
             <div class="room-header">
                 <h1>LOBBY</h1>
@@ -64,7 +65,7 @@
             </div>
         </div>
 
-        <!-- EXISTING: ROOM UI -->
+        <!-- ROOM UI -->
         <div id="roomSection" style="display: none; width: 100%; gap: 24px;">
             <div class="video-section">
                 <div class="room-header">
@@ -95,6 +96,7 @@
                     <button id="loadUrlBtn">Load Video</button>
                     <button id="uploadBtn">Play Local</button>
                     <button id="openBoardBtn" style="background: #a78bfa; color: #111827;">Open Whiteboard</button>
+                    <button id="theaterModeBtn" style="background: #1f2937; color: white;">🎬 Theater Mode</button>
                     <input type="file" id="localFileInput" accept="video/mp4,video/webm" style="display: none;">
                 </div>
             </div>
@@ -162,7 +164,6 @@
         </div>
     </div>
 
-    <!-- Loaded as a Module for ES Import support -->
     <script type="module" src="app.js"></script>
 </body>
 </html>
