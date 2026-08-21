@@ -7,6 +7,8 @@
     <link rel="stylesheet" href="style.css">
     <script src="/socket.io/socket.io.js"></script>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <!-- NEW: YouTube IFrame API -->
+    <script src="https://www.youtube.com/iframe_api"></script>
 </head>
 <body>
     <div class="main-wrapper">
@@ -22,13 +24,17 @@
             <p>Current Room: <span id="roomDisplay">None</span></p>
             
             <div class="video-wrapper">
+                <!-- Native Player -->
                 <video id="videoPlayer" controls></video>
+                <!-- YouTube Player Container -->
+                <div id="ytPlayer" style="display: none;"></div>
+                
                 <div id="reaction-container"></div>
             </div>
 
             <div class="controls-row">
-                <input type="text" id="videoUrlInput" placeholder="Paste .mp4 link here...">
-                <button id="loadUrlBtn">Load URL</button>
+                <input type="text" id="videoUrlInput" placeholder="Paste YouTube or .mp4 link here...">
+                <button id="loadUrlBtn">Load Video</button>
                 <button id="uploadBtn">Play Local</button>
                 <input type="file" id="localFileInput" accept="video/mp4,video/webm" style="display: none;">
             </div>
