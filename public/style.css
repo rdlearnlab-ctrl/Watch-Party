@@ -103,6 +103,11 @@ video.video-off { background: #1f2937 !important; opacity: 0.2; }
 .reaction-btn { background: #f9fafb; border: 2px solid #111827; border-radius: 8px; font-size: 20px; padding: 6px; cursor: pointer; box-shadow: 3px 3px 0px #111827; flex: 1; display: flex; justify-content: center; transition: all 0.1s ease; }
 .reaction-btn:active { transform: translate(3px, 3px); box-shadow: 0px 0px 0px #111827; background: #fef08a; }
 
+/* NEW SOUNDBOARD STYLES */
+.soundboard-bar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; justify-content: space-between; }
+.sound-btn { background: #f9fafb; border: 2px solid #111827; border-radius: 8px; font-size: 13px; font-weight: 700; padding: 6px 10px; cursor: pointer; box-shadow: 3px 3px 0px #111827; flex: 1; transition: all 0.1s ease; }
+.sound-btn:active { transform: translate(3px, 3px); box-shadow: 0px 0px 0px #111827; background: #a78bfa; }
+
 @media (max-width: 900px) {
     body { overflow: auto; padding: 10px; }
     .main-wrapper { flex-direction: column; height: auto; max-width: 100%; gap: 16px; }
@@ -117,7 +122,7 @@ video.video-off { background: #1f2937 !important; opacity: 0.2; }
     .sidebar { min-width: 100%; gap: 16px; overflow: visible; padding-right: 0; padding-bottom: 0; }
     .cams, .chat-container, .study-container { padding: 16px; box-shadow: 6px 6px 0px #111827; }
     #video-grid { max-height: 220px; }
-    .chat-container { height: 380px; }
+    .chat-container { height: 420px; }
     #chatBox { height: 220px; }
     button { padding: 10px 16px; }
 }
@@ -146,7 +151,7 @@ body.theater-mode .tab-btn.active { background: #444 !important; color: #fff !im
 body.theater-mode #chatBox { background: #111 !important; border-color: #333 !important; }
 body.theater-mode .chat-message.other { background: #222 !important; color: #ddd !important; border-color: #444 !important; box-shadow: none !important; }
 body.theater-mode .device-dropdown { background: #222 !important; color: #fff !important; border-color: #444 !important; }
-body.theater-mode .reaction-btn { background: #222 !important; border-color: #444 !important; box-shadow: none !important; }
+body.theater-mode .reaction-btn, body.theater-mode .sound-btn { background: #222 !important; color: #fff !important; border-color: #444 !important; box-shadow: none !important; }
 
 /* PEER HARDWARE STATES */
 video.peer-muted { border-color: #f43f5e !important; box-shadow: 4px 4px 0px #f43f5e !important; }
