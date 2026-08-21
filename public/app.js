@@ -50,7 +50,7 @@ onAuthStateChanged(auth, (user) => {
         
         authOverlay.style.display = 'none';
         mainApp.style.display = 'flex';
-        lobbySection.style.display = 'block'; // Show Lobby initially
+        lobbySection.style.display = 'block'; 
         roomSection.style.display = 'none';
         currentUserDisplay.innerText = myName; 
     } else {
@@ -82,10 +82,13 @@ googleLoginBtn.addEventListener('click', () => {
 logoutBtn.addEventListener('click', () => { signOut(auth); });
 
 // ==========================================
-// PEERJS & SOCKET SETUP
+// PEERJS, WEBTORRENT & SOCKET SETUP
 // ==========================================
 const socket = io(); 
 const video = document.getElementById('videoPlayer');
+
+// Initialize WebTorrent Client
+const wtClient = new WebTorrent();
 
 const peer = new Peer({
     secure: true,
@@ -126,7 +129,7 @@ function enterRoom(roomId, isPublic = false, isCreating = false) {
     
     lobbySection.style.display = 'none';
     roomSection.style.display = 'flex';
-    startLocalVideo(); // Start cameras only when entering a room
+    startLocalVideo(); 
 }
 
 createRoomBtn.addEventListener('click', () => {
@@ -140,8 +143,6 @@ joinPrivateRoomBtn.addEventListener('click', () => {
 });
 
 leaveRoomBtn.addEventListener('click', () => {
-    // A clean way to reset all media streams and WebRTC connections is to reload.
-    // Firebase Auth will remember the session and drop them right back in the lobby!
     window.location.reload(); 
 });
 
@@ -222,25 +223,76 @@ function processVideoLink(url) {
 loadUrlBtn.addEventListener('click', () => {
     const url = videoUrlInput.value.trim();
     if (url && currentRoom) {
-        processVideoLink(url); socket.emit('change_video_url', { roomId: currentRoom, url: url }); videoUrlInput.value = ''; 
+        processVideoLink(url); socket.emit('change_video_url', { roomId: currentRoom, url: url, isTorrent: false }); videoUrlInput.value = ''; 
     }
 });
 
-socket.on('receive_video_url', (newUrl) => { processVideoLink(newUrl); appendMessage("The host changed the video!", "System"); });
+socket.on('receive_video_url', (data) => { 
+    if (data.isTorrent) {
+        appendMessage("Host started a local movie stream! Buffering...", "System");
+        wtClient.add(data.url, (torrent) => {
+            const file = torrent.files.find(f => f.name.endsWith('.mp4') || f.name.endsWith('.webm') || f.name.endsWith('.mkv')) || torrent.files[0];
+            file.renderTo(video);
+            
+            isYouTubeActive = false;
+            if (!isBoardOpen) { document.getElementById('ytPlayer').style.display = 'none'; document.getElementById('videoPlayer').style.display = 'block'; }
+        });
+    } else {
+        processVideoLink(data.url); 
+        appendMessage("The host changed the video!", "System"); 
+    }
+});
 
+// WEBTORRENT: Seed local file directly to friends
 uploadBtn.addEventListener('click', () => { localFileInput.click(); });
 localFileInput.addEventListener('change', function() {
     const file = this.files[0];
-    if (file) { processVideoLink(URL.createObjectURL(file)); alert("Playing local file! (Note: Friends won't see this unless you Share Screen)."); }
+    if (file) { 
+        if (!currentRoom) return alert("Please join a room first!");
+        uploadBtn.innerText = "Seeding...";
+        uploadBtn.disabled = true;
+
+        wtClient.seed(file, (torrent) => {
+            console.log('Seeding WebTorrent:', torrent.infoHash);
+            torrent.files[0].renderTo(video);
+            
+            isYouTubeActive = false;
+            if (!isBoardOpen) { document.getElementById('ytPlayer').style.display = 'none'; document.getElementById('videoPlayer').style.display = 'block'; }
+
+            socket.emit('change_video_url', { roomId: currentRoom, url: torrent.magnetURI, isTorrent: true });
+            socket.emit('send_chat', { roomId: currentRoom, message: "Started streaming a local movie via WebTorrent!", sender: "System" });
+            
+            uploadBtn.innerText = "Play Local";
+            uploadBtn.disabled = false;
+        });
+    }
 });
 
 // ==========================================
-// 3. TABS & CHAT LOGIC
+// 3. TABS, CHAT & THEATER MODE LOGIC
 // ==========================================
 const tabChatBtn = document.getElementById('tabChatBtn');
 const tabStudyBtn = document.getElementById('tabStudyBtn');
 const chatSection = document.getElementById('chatSection');
 const studySection = document.getElementById('studySection');
+const theaterModeBtn = document.getElementById('theaterModeBtn');
+let isTheaterMode = false;
+
+// THEATER MODE TOGGLE
+theaterModeBtn.addEventListener('click', () => {
+    isTheaterMode = !isTheaterMode;
+    document.body.classList.toggle('theater-mode', isTheaterMode);
+    
+    if (isTheaterMode) {
+        theaterModeBtn.innerText = "☀️ Lights On";
+        theaterModeBtn.style.background = "#fef08a";
+        theaterModeBtn.style.color = "#111827";
+    } else {
+        theaterModeBtn.innerText = "🎬 Theater Mode";
+        theaterModeBtn.style.background = "#1f2937";
+        theaterModeBtn.style.color = "white";
+    }
+});
 
 tabChatBtn.addEventListener('click', () => { tabChatBtn.classList.add('active'); tabStudyBtn.classList.remove('active'); chatSection.style.display = 'flex'; studySection.style.display = 'none'; });
 tabStudyBtn.addEventListener('click', () => { tabStudyBtn.classList.add('active'); tabChatBtn.classList.remove('active'); studySection.style.display = 'flex'; chatSection.style.display = 'none'; });
@@ -252,7 +304,7 @@ const chatBox = document.getElementById('chatBox');
 function appendMessage(msg, sender) {
     const msgElement = document.createElement('div');
     msgElement.classList.add('chat-message');
-    msgElement.classList.add(sender === "You" ? 'self' : 'other');
+    msgElement.classList.add(sender === "You" || sender === "System" ? 'self' : 'other');
     msgElement.innerHTML = `<strong>${sender}:</strong> ${msg}`;
     chatBox.appendChild(msgElement);
     chatBox.scrollTop = chatBox.scrollHeight; 
@@ -360,7 +412,7 @@ const micSelect = document.getElementById('micSelect');
 let localStream; let activeCalls = []; let screenCalls = []; let currentScreenStream = null; let isScreenSharing = false; let isCamEnabled = true;
 
 async function startLocalVideo() {
-    if (localStream) return; // Prevent double initialization
+    if (localStream) return; 
     try {
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         myCam.srcObject = localStream;
@@ -436,7 +488,10 @@ holdToTalkBtn.addEventListener('touchstart', startTalking, { passive: false }); 
 screenShareBtn.addEventListener('click', async () => {
     if (!isScreenSharing) {
         try {
-            currentScreenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+            currentScreenStream = await navigator.mediaDevices.getDisplayMedia({ 
+                video: true, 
+                audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } 
+            });
             activeCalls.forEach(call => { screenCalls.push(peer.call(call.peer, currentScreenStream, { metadata: { type: 'screenshare' } })); });
             isBoardOpen = false; toggleBoardUI(false); isYouTubeActive = false; document.getElementById('ytPlayer').style.display = 'none'; document.getElementById('videoPlayer').style.display = 'block';
             video.removeAttribute('src'); video.srcObject = currentScreenStream; video.play();
