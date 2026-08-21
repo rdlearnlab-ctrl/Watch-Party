@@ -7,7 +7,6 @@
     <link rel="stylesheet" href="style.css">
     <script src="/socket.io/socket.io.js"></script>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-    <!-- NEW: YouTube IFrame API -->
     <script src="https://www.youtube.com/iframe_api"></script>
 </head>
 <body>
@@ -24,11 +23,8 @@
             <p>Current Room: <span id="roomDisplay">None</span></p>
             
             <div class="video-wrapper">
-                <!-- Native Player -->
                 <video id="videoPlayer" controls></video>
-                <!-- YouTube Player Container -->
                 <div id="ytPlayer" style="display: none;"></div>
-                
                 <div id="reaction-container"></div>
             </div>
 
@@ -60,7 +56,6 @@
                     <button id="pttToggleBtn">PTT: OFF</button>
                 </div>
                 
-                <!-- Mobile PTT Button -->
                 <button id="holdToTalkBtn" style="display: none; width: 100%; margin-top: 12px; font-size: 18px; padding: 16px;">
                     🎙️ HOLD TO TALK
                 </button>
@@ -69,22 +64,48 @@
                 </p>
             </div>
 
-            <div class="chat-container">
-                <h3>Live Chat</h3>
+            <!-- NEW: Sidebar Navigation Tabs -->
+            <div class="sidebar-tabs">
+                <button id="tabChatBtn" class="tab-btn active">Live Chat</button>
+                <button id="tabStudyBtn" class="tab-btn">Study Hub</button>
+            </div>
+
+            <!-- Chat Section -->
+            <div id="chatSection" class="chat-container">
                 <div id="chatBox"></div>
                 
-                <!-- Reaction Bar -->
                 <div class="reaction-bar">
                     <button class="reaction-btn" data-emoji="🔥">🔥</button>
                     <button class="reaction-btn" data-emoji="😂">😂</button>
                     <button class="reaction-btn" data-emoji="😲">😲</button>
-                    <button class="reaction-btn" data-emoji="💖">💖</button>
+                    <button class="reaction-btn" data-emoji="✏️">✏️</button>
                 </div>
 
                 <div class="chat-input-area">
                     <input type="text" id="chatInput" placeholder="Type a message...">
                     <button id="sendChatBtn">Send</button>
                 </div>
+            </div>
+
+            <!-- NEW: Study Hub Section -->
+            <div id="studySection" class="study-container" style="display: none;">
+                <div class="timer-section">
+                    <h3 style="margin-bottom: 8px;">Focus Timer</h3>
+                    <div class="timer-display" id="timerDisplay">25:00</div>
+                    <div class="timer-controls">
+                        <button id="startTimerBtn">Start Sync</button>
+                        <button id="resetTimerBtn">Reset</button>
+                    </div>
+                </div>
+                
+                <div class="board-header">
+                    <h3 style="margin-bottom: 0;">Whiteboard</h3>
+                    <div class="board-tools">
+                        <input type="color" id="colorPicker" value="#111827">
+                        <button id="clearBoardBtn">Clear</button>
+                    </div>
+                </div>
+                <canvas id="whiteboard"></canvas>
             </div>
         </div>
     </div>
