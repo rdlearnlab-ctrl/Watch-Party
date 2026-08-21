@@ -164,22 +164,32 @@ const socket = io();
 const video = document.getElementById('videoPlayer');
 const wtClient = new WebTorrent();
 
-const peer = new Peer({
-    secure: true,
-    config: {
-        iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' },
-            { urls: 'stun:stun3.l.google.com:19302' },
-            { urls: 'stun:stun4.l.google.com:19302' }
-        ]
-    }
-}); 
+let peer = null; 
 let myPeerId = null;
 
-peer.on('open', (id) => { myPeerId = id; });
-peer.on('error', (err) => { if (!myPeerId) myPeerId = "fallback-id-" + Math.random().toString(36).substring(7); });
+// SECURELY FETCH TURN CREDENTIALS FROM BACKEND
+async function initializeWebRTC() {
+    try {
+        const response = await fetch('/api/ice-servers');
+        const iceServers = await response.json();
+
+        peer = new Peer({
+            secure: true,
+            config: {
+                iceServers: iceServers
+            }
+        }); 
+
+        peer.on('open', (id) => { myPeerId = id; });
+        peer.on('error', (err) => { 
+            console.error("PeerJS Error:", err);
+            if (!myPeerId) myPeerId = "fallback-id-" + Math.random().toString(36).substring(7); 
+        });
+    } catch (error) {
+        console.error("Failed to fetch secure ICE servers:", error);
+    }
+}
+initializeWebRTC();
 
 // ==========================================
 // 1. LOBBY & ROOM LOGIC
@@ -197,7 +207,7 @@ const leaveRoomBtn = document.getElementById('leaveRoomBtn');
 let currentRoom = null;
 
 function enterRoom(roomId, isPublic = false, category = 'Movie Night', isCreating = false) {
-    if (!myPeerId) return alert("Waiting for connection... try again in a second.");
+    if (!myPeerId || !peer) return alert("Waiting for secure connection servers... try again in a second.");
     currentRoom = roomId;
     roomDisplay.innerText = currentRoom;
     
