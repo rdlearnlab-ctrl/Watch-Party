@@ -118,7 +118,7 @@ h3 {
     flex-wrap: wrap;
 }
 
-input[type="text"] {
+input[type="text"], input[type="email"], input[type="password"] {
     background: #f9fafb;
     border: 3px solid #111827;
     color: #111827;
@@ -131,7 +131,7 @@ input[type="text"] {
     transition: all 0.1s ease;
 }
 
-input[type="text"]:focus { 
+input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focus { 
     background: #ffffff; 
     box-shadow: 4px 4px 0px #111827; 
 }
@@ -317,7 +317,7 @@ button:active {
     display: block; 
 }
 
-/* NEW MAIN SCREEN WHITEBOARD */
+/* MAIN SCREEN WHITEBOARD */
 #whiteboardContainer {
     position: absolute;
     top: 0; left: 0;
@@ -478,6 +478,7 @@ video.video-off {
     #chatBox { height: 220px; }
     button { padding: 10px 16px; }
 }
+
 /* --- AUTHENTICATION OVERLAY --- */
 .auth-overlay {
     position: fixed;
