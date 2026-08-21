@@ -116,15 +116,19 @@ function processVideoLink(url) {
     const ytId = parseYouTubeId(url);
     if (ytId) {
         isYouTubeActive = true;
-        document.getElementById('videoPlayer').style.display = 'none';
-        document.getElementById('ytPlayer').style.display = 'block';
+        if (!isBoardOpen) {
+            document.getElementById('videoPlayer').style.display = 'none';
+            document.getElementById('ytPlayer').style.display = 'block';
+        }
         if (ytPlayer && ytPlayer.loadVideoById) {
             ytEmitLock = true; ytPlayer.loadVideoById(ytId); setTimeout(() => ytEmitLock = false, 500);
         }
     } else {
         isYouTubeActive = false;
-        document.getElementById('ytPlayer').style.display = 'none';
-        document.getElementById('videoPlayer').style.display = 'block';
+        if (!isBoardOpen) {
+            document.getElementById('ytPlayer').style.display = 'none';
+            document.getElementById('videoPlayer').style.display = 'block';
+        }
         video.src = url;
     }
 }
@@ -172,7 +176,6 @@ tabStudyBtn.addEventListener('click', () => {
     tabChatBtn.classList.remove('active');
     studySection.style.display = 'flex';
     chatSection.style.display = 'none';
-    resizeCanvas(); // Ensure canvas fits available space when opened
 });
 
 const chatInput = document.getElementById('chatInput');
@@ -201,22 +204,58 @@ chatInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') { e.preve
 socket.on('receive_chat', (msg) => { appendMessage(msg, "Friend"); });
 
 // ==========================================
-// 4. STUDY HUB: WHITEBOARD LOGIC
+// 4. MAIN SCREEN WHITEBOARD LOGIC
 // ==========================================
 const canvas = document.getElementById('whiteboard');
 const ctx = canvas.getContext('2d');
 const colorPicker = document.getElementById('colorPicker');
 const clearBoardBtn = document.getElementById('clearBoardBtn');
+const openBoardBtn = document.getElementById('openBoardBtn');
+const whiteboardContainer = document.getElementById('whiteboardContainer');
 
 let isDrawing = false;
 let current = { x: 0, y: 0 };
+let isBoardOpen = false;
 
 function resizeCanvas() {
-    // Math to sync rendering coordinates with CSS layout size
     canvas.width = canvas.offsetWidth;
     canvas.height = canvas.offsetHeight;
 }
 window.addEventListener('resize', resizeCanvas);
+
+function toggleBoardUI(isOpen) {
+    if (isOpen) {
+        whiteboardContainer.style.display = 'block';
+        openBoardBtn.innerText = "Close Whiteboard";
+        openBoardBtn.style.background = "#f43f5e";
+        openBoardBtn.style.color = "white";
+        document.getElementById('videoPlayer').style.display = 'none';
+        document.getElementById('ytPlayer').style.display = 'none';
+        // Need a slight delay to let the UI render before pulling dimensions
+        setTimeout(resizeCanvas, 50);
+    } else {
+        whiteboardContainer.style.display = 'none';
+        openBoardBtn.innerText = "Open Whiteboard";
+        openBoardBtn.style.background = "#a78bfa";
+        openBoardBtn.style.color = "#111827";
+        if (isYouTubeActive) {
+            document.getElementById('ytPlayer').style.display = 'block';
+        } else {
+            document.getElementById('videoPlayer').style.display = 'block';
+        }
+    }
+}
+
+openBoardBtn.addEventListener('click', () => {
+    isBoardOpen = !isBoardOpen;
+    toggleBoardUI(isBoardOpen);
+    if (currentRoom) socket.emit('toggle_board', { roomId: currentRoom, isOpen: isBoardOpen });
+});
+
+socket.on('receive_toggle_board', (isOpen) => {
+    isBoardOpen = isOpen;
+    toggleBoardUI(isBoardOpen);
+});
 
 function drawLine(x0, y0, x1, y1, color, emit) {
     ctx.beginPath();
@@ -229,8 +268,6 @@ function drawLine(x0, y0, x1, y1, color, emit) {
     ctx.closePath();
 
     if (!emit || !currentRoom) return;
-    
-    // Convert to percentages so drawing scales on friends screens
     const w = canvas.width;
     const h = canvas.height;
     socket.emit('draw_line', {
@@ -244,10 +281,7 @@ function drawLine(x0, y0, x1, y1, color, emit) {
 const getEventPos = (e) => {
     const rect = canvas.getBoundingClientRect();
     const evt = e.touches ? e.touches[0] : e;
-    return {
-        x: evt.clientX - rect.left,
-        y: evt.clientY - rect.top
-    };
+    return { x: evt.clientX - rect.left, y: evt.clientY - rect.top };
 };
 
 const onMouseDown = (e) => {
@@ -274,7 +308,6 @@ canvas.addEventListener('mousedown', onMouseDown);
 canvas.addEventListener('mouseup', onMouseUp);
 canvas.addEventListener('mouseout', onMouseUp);
 canvas.addEventListener('mousemove', onMouseMove);
-
 canvas.addEventListener('touchstart', onMouseDown, { passive: true });
 canvas.addEventListener('touchend', onMouseUp, { passive: true });
 canvas.addEventListener('touchcancel', onMouseUp, { passive: true });
@@ -321,7 +354,6 @@ function startSyncTimer() {
         if (timeLeft > 0) {
             timeLeft--;
             updateTimerDisplay();
-            // Emit sync every 5 seconds to keep the room aligned
             if (timeLeft % 5 === 0 && currentRoom) {
                 socket.emit('sync_timer', { roomId: currentRoom, timeLeft: timeLeft, isRunning: isTimerRunning });
             }
@@ -413,6 +445,7 @@ async function startLocalVideo() {
             if (call.metadata && call.metadata.type === 'screenshare') {
                 call.on('stream', (friendStream) => {
                     addVideoStream(newFriendCam, friendStream);
+                    isBoardOpen = false; toggleBoardUI(false);
                     isYouTubeActive = false;
                     document.getElementById('ytPlayer').style.display = 'none';
                     document.getElementById('videoPlayer').style.display = 'block';
@@ -455,6 +488,7 @@ function addVideoStream(videoElement, stream) {
 function makeVideoClickable(videoElement, stream) {
     videoElement.style.cursor = "pointer"; videoElement.title = "Click to Pin to Center";
     videoElement.addEventListener('click', () => {
+        isBoardOpen = false; toggleBoardUI(false);
         isYouTubeActive = false;
         document.getElementById('ytPlayer').style.display = 'none';
         document.getElementById('videoPlayer').style.display = 'block';
@@ -518,6 +552,7 @@ screenShareBtn.addEventListener('click', async () => {
         try {
             currentScreenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
             activeCalls.forEach(call => { screenCalls.push(peer.call(call.peer, currentScreenStream, { metadata: { type: 'screenshare' } })); });
+            isBoardOpen = false; toggleBoardUI(false);
             isYouTubeActive = false; document.getElementById('ytPlayer').style.display = 'none'; document.getElementById('videoPlayer').style.display = 'block';
             video.removeAttribute('src'); video.srcObject = currentScreenStream; video.play();
             isScreenSharing = true; screenShareBtn.innerText = "Stop Sharing"; screenShareBtn.style.background = "#f43f5e"; screenShareBtn.style.color = "white";
@@ -571,4 +606,4 @@ function showReaction(emoji) {
     const el = document.createElement('div'); el.classList.add('floating-emoji'); el.innerText = emoji;
     el.style.left = `${Math.floor(Math.random() * 80) + 10}%`; reactionContainer.appendChild(el);
     setTimeout(() => { el.remove(); }, 2500);
-}s
+}
