@@ -3,55 +3,50 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Binge Watch Party</title>
+    <title>BingePlay - Watch Party</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+
     <div class="main-wrapper">
-        <!-- LEFT SIDE: The Movie -->
+        <!-- LEFT PANEL: Video Player & Controls -->
         <div class="video-section">
             <div class="room-header">
                 <h1>BingePlay</h1>
-                <div class="room-control">
-                    <input type="text" id="roomInput" placeholder="Enter Room ID">
+                <div class="room-controls">
+                    <input type="text" id="roomInput" placeholder="Enter Room...">
                     <button id="joinRoomBtn">Join Room</button>
                 </div>
             </div>
-            <p>Current Room: <strong id="roomDisplay">None</strong></p>
             
-            <!-- THE MISSING VIDEO PLAYER HAS BEEN RESTORED -->
-            <video id="videoPlayer" controls>
-                <source src="https://www.w3schools.com/html/mov_bbb.mp4" type="video/mp4">
-            </video>
+            <p>Current Room: <span id="roomDisplay">None</span></p>
 
-            <!-- URL INPUT & LOCAL FILE BUTTONS (Cleaned of inline styles) -->
+            <!-- Main Video Player -->
+            <video id="videoPlayer" controls></video>
+
+            <!-- URL & Local File Controls -->
             <div class="controls-row">
                 <input type="text" id="videoUrlInput" placeholder="Paste .mp4 link here...">
                 <button id="loadUrlBtn">Load URL</button>
-                
-                <input type="file" id="localFileInput" accept="video/mp4,video/webm,video/ogg" style="display: none;">
-                <button id="uploadBtn">📁 Play Local</button>
+                <button id="uploadBtn">Play Local</button>
+                <input type="file" id="localFileInput" accept="video/mp4" style="display: none;">
             </div>
         </div>
 
-        <!-- RIGHT SIDE: Cams & Chat -->
+        <!-- RIGHT PANEL: Sidebar (Cams & Chat) -->
         <div class="sidebar">
             <div class="cams">
                 <h3>Face Cams</h3>
                 <div id="video-grid">
-                    <video id="myCam" autoplay muted playsinline></video>
+                    <video id="myCam" autoplay playsinline></video>
                 </div>
-                <!-- NEW: Device Selection Dropdowns -->
+                
+                <!-- Device Selection Dropdowns -->
                 <div class="device-selectors" style="display: flex; flex-direction: column; gap: 8px; margin-top: 12px;">
                     <select id="cameraSelect" class="device-dropdown"></select>
                     <select id="micSelect" class="device-dropdown"></select>
                 </div>
                 
-                <!-- Existing Mute & Share buttons -->
-                <div class="cam-controls" style="display: flex; gap: 10px; margin-top: 12px;">
-                    <button id="muteBtn" style="flex: 1;">Mute Mic</button>
-                    <button id="screenShareBtn" style="flex: 1;">Share Screen</button>
-                </div>
                 <div class="cam-controls" style="display: flex; gap: 10px; margin-top: 12px;">
                     <button id="muteBtn" style="flex: 1;">Mute Mic</button>
                     <button id="screenShareBtn" style="flex: 1;">Share Screen</button>
@@ -69,8 +64,9 @@
         </div>
     </div>
 
+    <!-- Socket.IO & PeerJS CDNs -->
     <script src="/socket.io/socket.io.js"></script>
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
