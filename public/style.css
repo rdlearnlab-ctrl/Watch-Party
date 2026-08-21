@@ -48,13 +48,11 @@ body {
     flex-direction: column;
     gap: 24px;
     max-height: 100%;
-    /* FIX: Allows the sidebar to scroll independently without moving the video! */
     overflow-y: auto; 
     padding-right: 12px; 
     padding-bottom: 12px; 
 }
 
-/* Custom scrollbar for the sidebar */
 .sidebar::-webkit-scrollbar { width: 8px; }
 .sidebar::-webkit-scrollbar-track { background: transparent; }
 .sidebar::-webkit-scrollbar-thumb { background: #111827; border-radius: 8px; }
@@ -65,7 +63,7 @@ body {
     border-radius: 12px;
     box-shadow: 8px 8px 0px #111827;
     padding: 24px;
-    flex-shrink: 0; /* Ensures these boxes don't get artificially squished */
+    flex-shrink: 0; 
 }
 
 /* --- HEADERS & TYPOGRAPHY --- */
@@ -200,7 +198,7 @@ h3 {
     flex-grow: 1;
     display: flex;
     flex-direction: column;
-    min-height: 350px; /* Stronger height now that sidebar scrolls */
+    min-height: 350px; 
 }
 
 #chatBox {
@@ -234,8 +232,16 @@ h3 {
     box-shadow: 3px 3px 0px #111827;
 }
 
-.chat-message:nth-child(odd) { background: #a78bfa; align-self: flex-end; }
-.chat-message:nth-child(even) { background: #ffffff; align-self: flex-start; }
+/* THE FIX: Styles based on sender class, not odd/even counting */
+.chat-message.self { 
+    background: #a78bfa; 
+    align-self: flex-end; 
+}
+.chat-message.other { 
+    background: #ffffff; 
+    align-self: flex-start; 
+}
+
 .chat-message strong {
     color: #111827;
     display: block;
