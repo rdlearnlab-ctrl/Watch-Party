@@ -301,10 +301,13 @@ function stopScreenShare() {
     screenShareBtn.style.color = "";
 }
 // ==========================================
+// ==========================================
 // 6. DEVICE SELECTION LOGIC
 // ==========================================
+const cameraSelect = document.getElementById('cameraSelect');
+const micSelect = document.getElementById('micSelect');
 
-// 1. Fetch available cameras and mics
+// 1. Fetch available cameras and mics AFTER permission is granted
 async function getDevices() {
     try {
         const devices = await navigator.mediaDevices.enumerateDevices();
@@ -314,12 +317,12 @@ async function getDevices() {
         devices.forEach(device => {
             const option = document.createElement('option');
             option.value = device.deviceId;
-            // Use the actual device name, or a fallback if permissions are still loading
-            option.text = device.label || `${device.kind} (${device.deviceId.slice(0, 5)})`;
             
             if (device.kind === 'videoinput') {
+                option.text = device.label || 'Camera ' + (cameraSelect.length + 1);
                 cameraSelect.appendChild(option);
             } else if (device.kind === 'audioinput') {
+                option.text = device.label || 'Microphone ' + (micSelect.length + 1);
                 micSelect.appendChild(option);
             }
         });
@@ -330,7 +333,7 @@ async function getDevices() {
 
 // 2. Switch the active stream when a user changes the dropdown
 async function switchDevice() {
-    if (isScreenSharing) return; // Prevent breaking screen shares
+    if (isScreenSharing) return; 
 
     const audioSource = micSelect.value;
     const videoSource = cameraSelect.value;
@@ -341,13 +344,9 @@ async function switchDevice() {
     };
 
     try {
-        // Request a brand new stream with the newly selected hardware
         const newStream = await navigator.mediaDevices.getUserMedia(constraints);
-        
-        // Update your local camera preview
         myCam.srcObject = newStream;
 
-        // Hot-swap the tracks for all your connected friends without dropping the call
         const newVideoTrack = newStream.getVideoTracks()[0];
         const newAudioTrack = newStream.getAudioTracks()[0];
 
@@ -359,9 +358,7 @@ async function switchDevice() {
             if (senderAudio) senderAudio.replaceTrack(newAudioTrack);
         });
 
-        // Kill the old hardware tracks to free up the red recording light
         localStream.getTracks().forEach(track => track.stop());
-        
         localStream = newStream;
         makeVideoClickable(myCam, localStream);
 
@@ -370,9 +367,12 @@ async function switchDevice() {
     }
 }
 
-// Listen for dropdown changes
 cameraSelect.addEventListener('change', switchDevice);
 micSelect.addEventListener('change', switchDevice);
 
-// Run the fetch function once a second after load to ensure permissions are granted
-setTimeout(getDevices, 1000);
+// 3. Trigger device population right after camera permission resolves
+navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+    .then(() => {
+        getDevices();
+    })
+    .catch(() => {});
