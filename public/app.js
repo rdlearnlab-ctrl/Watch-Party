@@ -2,13 +2,24 @@ const socket = io();
 const video = document.getElementById('videoPlayer');
 
 // ==========================================
-// PEERJS INITIALIZATION
+// PEERJS INITIALIZATION (SECURE & FALLBACK)
 // ==========================================
-const peer = new Peer(); 
+const peer = new Peer({
+    host: '0.peerjs.com',
+    port: 443,
+    secure: true
+}); 
 let myPeerId = null;
 
 peer.on('open', (id) => {
     myPeerId = id; 
+    console.log("Connected to Peer Server with ID:", id);
+});
+
+peer.on('error', (err) => {
+    console.error("PeerJS error details:", err);
+    // Fallback: ensures the join button never gets stuck if cloud flakes out
+    if (!myPeerId) myPeerId = "fallback-id-" + Math.random().toString(36).substring(7);
 });
 
 // ==========================================
@@ -57,9 +68,6 @@ socket.on('receive_seek', (time) => {
 // ==========================================
 // 3. CHAT LOGIC
 // ==========================================
-// ==========================================
-// 3. CHAT LOGIC
-// ==========================================
 const chatInput = document.getElementById('chatInput');
 const sendChatBtn = document.getElementById('sendChatBtn');
 const chatBox = document.getElementById('chatBox');
@@ -81,7 +89,6 @@ sendChatBtn.addEventListener('click', () => {
     }
 });
 
-// NEW: Press "Enter" to send message
 chatInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
         e.preventDefault(); 
@@ -92,6 +99,7 @@ chatInput.addEventListener('keypress', (e) => {
 socket.on('receive_chat', (msg) => {
     appendMessage(msg, "Friend");
 });
+
 // ==========================================
 // 4. CUSTOM URL & LOCAL FILE LOGIC
 // ==========================================
@@ -144,10 +152,9 @@ const micSelect = document.getElementById('micSelect');
 
 let localStream; 
 let activeCalls = []; 
-let screenCalls = []; // NEW: Stores screen share connections separately
+let screenCalls = []; 
 let currentScreenStream = null; 
 
-// Get local camera
 navigator.mediaDevices.getUserMedia({ video: true, audio: true })
     .then((stream) => {
         localStream = stream;
@@ -159,24 +166,20 @@ navigator.mediaDevices.getUserMedia({ video: true, audio: true })
             
             const newFriendCam = document.createElement('video');
             
-            // NEW: If this incoming call is a screen share, auto-pin it!
             if (call.metadata && call.metadata.type === 'screenshare') {
                 call.on('stream', (friendStream) => {
                     addVideoStream(newFriendCam, friendStream);
-                    // Auto-pin to center
                     video.removeAttribute('src'); 
                     video.srcObject = friendStream;
                     video.play();
                 });
             } else {
-                // Normal facecam call
                 activeCalls.push(call); 
                 call.on('stream', (friendStream) => {
                     addVideoStream(newFriendCam, friendStream);
                 });
             }
 
-            // Remove the video box if they stop sharing or leave
             call.on('close', () => {
                 newFriendCam.remove();
             });
@@ -201,7 +204,6 @@ function connectToNewUser(peerId, stream) {
         newFriendCam.remove();
     });
 
-    // NEW: If we are already sharing our screen, send it to the new user immediately
     if (isScreenSharing && currentScreenStream) {
         const screenCall = peer.call(peerId, currentScreenStream, { metadata: { type: 'screenshare' } });
         screenCalls.push(screenCall);
@@ -248,13 +250,11 @@ screenShareBtn.addEventListener('click', async () => {
         try {
             currentScreenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
 
-            // Make a SECOND call to all friends just for the screen share!
             activeCalls.forEach(call => {
                 const screenCall = peer.call(call.peer, currentScreenStream, { metadata: { type: 'screenshare' } });
                 screenCalls.push(screenCall);
             });
 
-            // Pin it to our own center screen
             video.removeAttribute('src'); 
             video.srcObject = currentScreenStream;
             video.play();
@@ -268,7 +268,6 @@ screenShareBtn.addEventListener('click', async () => {
                 socket.emit('send_chat', { roomId: currentRoom, message: "I am sharing my screen! (It should auto-pin for you)" });
             }
 
-            // Listen for native browser "Stop Sharing" button
             currentScreenStream.getVideoTracks()[0].onended = () => {
                 stopScreenShare();
             };
@@ -287,12 +286,10 @@ function stopScreenShare() {
         currentScreenStream.getTracks().forEach(track => track.stop()); 
     }
     
-    // Close the screen share connections (this removes it from friends' sidebars)
     screenCalls.forEach(call => call.close());
     screenCalls = [];
     currentScreenStream = null;
 
-    // Clear the center screen
     video.srcObject = null;
 
     isScreenSharing = false;
@@ -300,14 +297,10 @@ function stopScreenShare() {
     screenShareBtn.style.background = ""; 
     screenShareBtn.style.color = "";
 }
-// ==========================================
+
 // ==========================================
 // 6. DEVICE SELECTION LOGIC
 // ==========================================
-const cameraSelect = document.getElementById('cameraSelect');
-const micSelect = document.getElementById('micSelect');
-
-// 1. Fetch available cameras and mics AFTER permission is granted
 async function getDevices() {
     try {
         const devices = await navigator.mediaDevices.enumerateDevices();
@@ -331,7 +324,6 @@ async function getDevices() {
     }
 }
 
-// 2. Switch the active stream when a user changes the dropdown
 async function switchDevice() {
     if (isScreenSharing) return; 
 
@@ -370,7 +362,6 @@ async function switchDevice() {
 cameraSelect.addEventListener('change', switchDevice);
 micSelect.addEventListener('change', switchDevice);
 
-// 3. Trigger device population right after camera permission resolves
 navigator.mediaDevices.getUserMedia({ video: true, audio: true })
     .then(() => {
         getDevices();
