@@ -1,9 +1,88 @@
+// ==========================================
+// FIREBASE MODULAR AUTHENTICATION SETUP
+// ==========================================
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+import { 
+    getAuth, 
+    signInWithEmailAndPassword, 
+    createUserWithEmailAndPassword, 
+    signOut, 
+    onAuthStateChanged 
+} from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+
+const firebaseConfig = {
+    apiKey: "AIzaSyCGkUPgeetqOHPHuED207A1vmrGos6Jr9M",
+    authDomain: "bingeplay-67edc.firebaseapp.com",
+    projectId: "bingeplay-67edc",
+    storageBucket: "bingeplay-67edc.firebasestorage.app",
+    messagingSenderId: "478808476965",
+    appId: "1:478808476965:web:94bc09c303eed8a7a85ecc",
+    measurementId: "G-D1W3BJY37W"
+};
+
+// Initialize Firebase App & Auth
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+
+const authOverlay = document.getElementById('authOverlay');
+const mainApp = document.getElementById('mainApp');
+const emailInput = document.getElementById('emailInput');
+const passwordInput = document.getElementById('passwordInput');
+const loginBtn = document.getElementById('loginBtn');
+const signupBtn = document.getElementById('signupBtn');
+const logoutBtn = document.getElementById('logoutBtn');
+const authError = document.getElementById('authError');
+const currentUserDisplay = document.getElementById('currentUserDisplay');
+
+let appUser = null;
+
+// Listen for auth state changes
+onAuthStateChanged(auth, (user) => {
+    if (user) {
+        appUser = user;
+        authOverlay.style.display = 'none';
+        mainApp.style.display = 'flex';
+        currentUserDisplay.innerText = user.email ? user.email.split('@')[0] : "User"; 
+        startLocalVideo(); // Only initialize media after login
+    } else {
+        appUser = null;
+        authOverlay.style.display = 'flex';
+        mainApp.style.display = 'none';
+    }
+});
+
+// Login Logic
+loginBtn.addEventListener('click', () => {
+    authError.style.display = 'none';
+    signInWithEmailAndPassword(auth, emailInput.value, passwordInput.value)
+        .catch(error => {
+            authError.innerText = error.message;
+            authError.style.display = 'block';
+        });
+});
+
+// Signup Logic
+signupBtn.addEventListener('click', () => {
+    authError.style.display = 'none';
+    createUserWithEmailAndPassword(auth, emailInput.value, passwordInput.value)
+        .catch(error => {
+            authError.innerText = error.message;
+            authError.style.display = 'block';
+        });
+});
+
+// Logout Logic
+logoutBtn.addEventListener('click', () => {
+    signOut(auth);
+});
+
+// ==========================================
+// EXISTING APP LOGIC
+// ==========================================
 const socket = io(); 
 const video = document.getElementById('videoPlayer');
 
-// ==========================================
 // PEERJS INITIALIZATION
-// ==========================================
 const peer = new Peer({
     host: '0.peerjs.com',
     port: 443,
@@ -29,9 +108,7 @@ peer.on('error', (err) => {
     if (!myPeerId) myPeerId = "fallback-id-" + Math.random().toString(36).substring(7);
 });
 
-// ==========================================
 // 1. ROOM LOGIC
-// ==========================================
 const roomInput = document.getElementById('roomInput');
 const joinRoomBtn = document.getElementById('joinRoomBtn');
 const roomDisplay = document.getElementById('roomDisplay');
@@ -49,9 +126,7 @@ joinRoomBtn.addEventListener('click', () => {
     }
 });
 
-// ==========================================
 // 2. YOUTUBE API & VIDEO SYNC LOGIC
-// ==========================================
 let ytPlayer;
 let isYouTubeActive = false;
 let ytEmitLock = false;
@@ -156,9 +231,7 @@ localFileInput.addEventListener('change', function() {
     }
 });
 
-// ==========================================
 // 3. TABS & CHAT LOGIC
-// ==========================================
 const tabChatBtn = document.getElementById('tabChatBtn');
 const tabStudyBtn = document.getElementById('tabStudyBtn');
 const chatSection = document.getElementById('chatSection');
@@ -203,9 +276,7 @@ sendChatBtn.addEventListener('click', () => {
 chatInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') { e.preventDefault(); sendChatBtn.click(); } });
 socket.on('receive_chat', (msg) => { appendMessage(msg, "Friend"); });
 
-// ==========================================
 // 4. MAIN SCREEN WHITEBOARD LOGIC
-// ==========================================
 const canvas = document.getElementById('whiteboard');
 const ctx = canvas.getContext('2d');
 const colorPicker = document.getElementById('colorPicker');
@@ -231,7 +302,6 @@ function toggleBoardUI(isOpen) {
         openBoardBtn.style.color = "white";
         document.getElementById('videoPlayer').style.display = 'none';
         document.getElementById('ytPlayer').style.display = 'none';
-        // Need a slight delay to let the UI render before pulling dimensions
         setTimeout(resizeCanvas, 50);
     } else {
         whiteboardContainer.style.display = 'none';
@@ -328,9 +398,7 @@ socket.on('receive_clear_board', () => {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 });
 
-// ==========================================
 // 5. STUDY HUB: POMODORO TIMER LOGIC
-// ==========================================
 const timerDisplay = document.getElementById('timerDisplay');
 const startTimerBtn = document.getElementById('startTimerBtn');
 const resetTimerBtn = document.getElementById('resetTimerBtn');
@@ -401,9 +469,7 @@ socket.on('receive_sync_timer', (data) => {
     }
 });
 
-// ==========================================
 // 6. WEBRTC & HARDWARE CONTROLS
-// ==========================================
 const videoGrid = document.getElementById('video-grid');
 const myCam = document.getElementById('myCam');
 const muteBtn = document.getElementById('muteBtn');
@@ -459,8 +525,6 @@ async function startLocalVideo() {
         });
     } catch (error) { console.error("Error accessing media:", error); }
 }
-
-startLocalVideo();
 
 socket.on('user_connected', (newPeerId) => { connectToNewUser(newPeerId, localStream); });
 
@@ -585,9 +649,7 @@ async function switchDevice() {
 }
 cameraSelect.addEventListener('change', switchDevice); micSelect.addEventListener('change', switchDevice);
 
-// ==========================================
 // 7. FLOATING REACTIONS LOGIC
-// ==========================================
 const reactionBtns = document.querySelectorAll('.reaction-btn');
 const reactionContainer = document.getElementById('reaction-container');
 
