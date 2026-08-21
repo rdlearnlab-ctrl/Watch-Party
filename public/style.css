@@ -48,7 +48,16 @@ body {
     flex-direction: column;
     gap: 24px;
     max-height: 100%;
+    /* FIX: Allows the sidebar to scroll independently without moving the video! */
+    overflow-y: auto; 
+    padding-right: 12px; 
+    padding-bottom: 12px; 
 }
+
+/* Custom scrollbar for the sidebar */
+.sidebar::-webkit-scrollbar { width: 8px; }
+.sidebar::-webkit-scrollbar-track { background: transparent; }
+.sidebar::-webkit-scrollbar-thumb { background: #111827; border-radius: 8px; }
 
 .cams, .chat-container {
     background: #ffffff;
@@ -56,6 +65,7 @@ body {
     border-radius: 12px;
     box-shadow: 8px 8px 0px #111827;
     padding: 24px;
+    flex-shrink: 0; /* Ensures these boxes don't get artificially squished */
 }
 
 /* --- HEADERS & TYPOGRAPHY --- */
@@ -190,7 +200,7 @@ h3 {
     flex-grow: 1;
     display: flex;
     flex-direction: column;
-    min-height: 250px; /* FIX: Prevents the camera panel from crushing the chat section */
+    min-height: 350px; /* Stronger height now that sidebar scrolls */
 }
 
 #chatBox {
@@ -204,7 +214,7 @@ h3 {
     display: flex;
     flex-direction: column;
     gap: 12px;
-    min-height: 120px; /* FIX: Guarantees the chat area always stays open and usable */
+    min-height: 150px; 
 }
 
 #chatBox::-webkit-scrollbar { width: 10px; border-left: 3px solid #111827; }
@@ -381,7 +391,7 @@ video.video-off { background: #1f2937 !important; opacity: 0.2; }
     #videoPlayer { max-height: 240px; }
     .controls-row { flex-direction: column; gap: 8px; }
     .controls-row input, .controls-row button { width: 100%; }
-    .sidebar { min-width: 100%; gap: 16px; }
+    .sidebar { min-width: 100%; gap: 16px; overflow: visible; padding-right: 0; padding-bottom: 0; }
     .cams, .chat-container { padding: 16px; box-shadow: 6px 6px 0px #111827; }
     #video-grid { max-height: 220px; }
     .chat-container { height: 380px; }
