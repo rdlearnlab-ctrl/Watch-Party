@@ -52,32 +52,27 @@ let myName = "User";
 let globalRooms = [];
 
 // ==========================================
-// CUSTOM SOUND EFFECTS SETUP
+// SOUNDBOARD SETUP
 // ==========================================
-const chatPopSound = new Audio('./soundeffects/ding-sound-effect_2.mp3');
-const joinSound = new Audio('./soundeffects/bone-crack.mp3'); // Keeping this variable in case you want to map it to a button later
-const rizzSound = new Audio('./soundeffects/rizz-sound-effect.mp3');
-const omgSound = new Audio('./soundeffects/oh-my-god-bro-oh-hell-nah-man.mp3');
-const fahhhSound = new Audio('./soundeffects/fahhh_KcgAXfs.mp3');
+const sounds = {
+    'ding': new Audio('./soundeffects/ding-sound-effect_2.mp3'),
+    'crack': new Audio('./soundeffects/bone-crack.mp3'),
+    'rizz': new Audio('./soundeffects/rizz-sound-effect.mp3'),
+    'omg': new Audio('./soundeffects/oh-my-god-bro-oh-hell-nah-man.mp3'),
+    'fahhh': new Audio('./soundeffects/fahhh_KcgAXfs.mp3')
+};
 
-chatPopSound.volume = 0.5;
-joinSound.volume = 0.6;
-rizzSound.volume = 0.5;
-omgSound.volume = 0.5;
-fahhhSound.volume = 0.5;
+sounds['ding'].volume = 0.5;
+sounds['crack'].volume = 0.6;
+sounds['rizz'].volume = 0.5;
+sounds['omg'].volume = 0.5;
+sounds['fahhh'].volume = 0.5;
 
-function playSound(audioElement) {
-    audioElement.currentTime = 0; 
-    audioElement.play().catch(() => {}); 
-}
-
-function playReactionSound(emoji) {
-    if (emoji === '🔥') {
-        playSound(rizzSound);
-    } else if (emoji === '😲') {
-        playSound(omgSound);
-    } else {
-        playSound(fahhhSound); 
+function playSound(soundId) {
+    const audio = sounds[soundId];
+    if (audio) {
+        audio.currentTime = 0; 
+        audio.play().catch(() => {}); 
     }
 }
 
@@ -130,9 +125,6 @@ googleLoginBtn.addEventListener('click', () => {
 
 logoutBtn.addEventListener('click', () => { signOut(auth); });
 
-// ==========================================
-// PROFILE MODAL & DATABASE SAVING
-// ==========================================
 const openProfileBtn = document.getElementById('openProfileBtn');
 const profileModal = document.getElementById('profileModal');
 const closeProfileBtn = document.getElementById('closeProfileBtn');
@@ -285,21 +277,9 @@ function onPlayerStateChange(event) {
     }
 }
 
-video.addEventListener('play', () => { 
-    if (currentRoom && !isYouTubeActive) {
-        socket.emit('play_video', currentRoom); 
-    } 
-});
-video.addEventListener('pause', () => { 
-    if (currentRoom && !isYouTubeActive) {
-        socket.emit('pause_video', currentRoom); 
-    } 
-});
-video.addEventListener('seeked', () => { 
-    if (currentRoom && !isYouTubeActive) {
-        socket.emit('seek_video', { roomId: currentRoom, time: video.currentTime }); 
-    } 
-});
+video.addEventListener('play', () => { if (currentRoom && !isYouTubeActive) { socket.emit('play_video', currentRoom); } });
+video.addEventListener('pause', () => { if (currentRoom && !isYouTubeActive) { socket.emit('pause_video', currentRoom); } });
+video.addEventListener('seeked', () => { if (currentRoom && !isYouTubeActive) { socket.emit('seek_video', { roomId: currentRoom, time: video.currentTime }); } });
 
 socket.on('receive_play', () => { if (isYouTubeActive && ytPlayer && ytPlayer.playVideo) { ytEmitLock = true; ytPlayer.playVideo(); setTimeout(() => ytEmitLock = false, 500); } else { video.play(); } });
 socket.on('receive_pause', () => { if (isYouTubeActive && ytPlayer && ytPlayer.pauseVideo) { ytEmitLock = true; ytPlayer.pauseVideo(); setTimeout(() => ytEmitLock = false, 500); } else { video.pause(); } });
@@ -398,24 +378,16 @@ function appendMessage(msg, sender) {
     chatBox.scrollTop = chatBox.scrollHeight; 
 }
 
-// SEND CHAT BUTTON - PLAYS DING LOCALLY WHEN YOU CLICK
 sendChatBtn.addEventListener('click', () => {
     const msg = chatInput.value;
     if (msg.trim() !== "" && currentRoom) {
         appendMessage(msg, "You");
         socket.emit('send_chat', { roomId: currentRoom, message: msg, sender: myName });
         chatInput.value = ''; 
-        playSound(chatPopSound); // <--- Play sound when you click send!
     }
 });
-
 chatInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') { e.preventDefault(); sendChatBtn.click(); } });
-
-// RECEIVE CHAT - NO AUTOMATIC SOUND
-socket.on('receive_chat', (data) => { 
-    appendMessage(data.message, data.sender || "Friend"); 
-    // Removed automatic sound here!
-});
+socket.on('receive_chat', (data) => { appendMessage(data.message, data.sender || "Friend"); });
 
 const icebreakers = [
     "What is the absolute best movie soundtrack of all time?",
@@ -428,6 +400,22 @@ document.getElementById('icebreakerBtn').addEventListener('click', () => {
     const fullMsg = `🎲 Icebreaker: ${randomQuestion}`;
     appendMessage(fullMsg, "System");
     if (currentRoom) socket.emit('send_chat', { roomId: currentRoom, message: fullMsg, sender: "System" });
+});
+
+// SOUNDBOARD LISTENERS
+const soundBtns = document.querySelectorAll('.sound-btn');
+soundBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+        const soundId = btn.getAttribute('data-sound');
+        playSound(soundId);
+        if (currentRoom) {
+            socket.emit('play_sound', { roomId: currentRoom, soundId: soundId });
+        }
+    });
+});
+
+socket.on('receive_sound', (soundId) => {
+    playSound(soundId);
 });
 
 // ==========================================
@@ -557,10 +545,7 @@ async function startLocalVideo() {
     } catch (error) { console.error("Error accessing media:", error); }
 }
 
-// USER JOINS - NO AUTOMATIC SOUND
 socket.on('user_connected', async (newPeerId) => { 
-    // Removed automatic sound here!
-    
     const stream = localStream || await startLocalVideo();
     if (stream && newPeerId !== myPeerId) connectToNewUser(newPeerId, stream); 
 });
@@ -673,24 +658,19 @@ async function switchDevice() {
 }
 cameraSelect.addEventListener('change', switchDevice); micSelect.addEventListener('change', switchDevice);
 
-// 7. FLOATING REACTIONS LOGIC & SOUND TRIGGERS
+// 7. FLOATING REACTIONS LOGIC (Visual Only)
 const reactionBtns = document.querySelectorAll('.reaction-btn'); const reactionContainer = document.getElementById('reaction-container');
 
 if (reactionBtns.length > 0 && reactionContainer) { 
-    // CLICK LISTENER - PLAYS SOUND LOCALLY WHEN YOU CLICK
     reactionBtns.forEach(btn => { 
         btn.addEventListener('click', () => { 
             const emoji = btn.getAttribute('data-emoji'); 
             showReaction(emoji); 
-            playReactionSound(emoji); // <--- Sound plays when YOU click!
             if (currentRoom) socket.emit('send_reaction', { roomId: currentRoom, emoji: emoji }); 
         }); 
     }); 
-    
-    // RECEIVE REACTION - NO AUTOMATIC SOUND
     socket.on('receive_reaction', (emoji) => { 
         showReaction(emoji); 
-        // Removed automatic sound here!
     }); 
 }
 
