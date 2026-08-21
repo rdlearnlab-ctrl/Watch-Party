@@ -5,10 +5,50 @@ const io = require('socket.io')(http);
 
 app.use(express.static('public'));
 
+const activeRooms = {}; // Format: { roomId: { isPublic: boolean, users: number } }
+
+function getPublicRooms() {
+    const publicRooms = [];
+    for (const roomId in activeRooms) {
+        if (activeRooms[roomId].isPublic) {
+            publicRooms.push({ roomId, users: activeRooms[roomId].users });
+        }
+    }
+    return publicRooms;
+}
+
 io.on('connection', (socket) => {
+    // Send the active public rooms to the user as soon as they connect
+    socket.emit('update_rooms', getPublicRooms());
+
+    socket.on('create_room', (data) => {
+        if (!activeRooms[data.roomId]) {
+            activeRooms[data.roomId] = { isPublic: data.isPublic, users: 0 };
+        }
+        io.emit('update_rooms', getPublicRooms());
+    });
+
     socket.on('join_room', (data) => {
         socket.join(data.roomId);
+        socket.roomId = data.roomId; // Tag socket for disconnect tracking
+        
+        if (!activeRooms[data.roomId]) {
+            activeRooms[data.roomId] = { isPublic: false, users: 0 }; // Fallback
+        }
+        activeRooms[data.roomId].users++;
+        
+        io.emit('update_rooms', getPublicRooms());
         socket.to(data.roomId).emit('user_connected', data.peerId);
+    });
+
+    socket.on('disconnect', () => {
+        if (socket.roomId && activeRooms[socket.roomId]) {
+            activeRooms[socket.roomId].users--;
+            if (activeRooms[socket.roomId].users <= 0) {
+                delete activeRooms[socket.roomId]; // Clean up empty rooms
+            }
+            io.emit('update_rooms', getPublicRooms());
+        }
     });
 
     // Video Sync
@@ -17,7 +57,7 @@ io.on('connection', (socket) => {
     socket.on('seek_video', (data) => socket.to(data.roomId).emit('receive_seek', data.time));
     socket.on('change_video_url', (data) => socket.to(data.roomId).emit('receive_video_url', data.url));
     
-    // Chat & Reactions (Updated to pass the entire data object including the sender's name)
+    // Chat & Reactions
     socket.on('send_chat', (data) => socket.to(data.roomId).emit('receive_chat', data));
     socket.on('send_reaction', (data) => socket.to(data.roomId).emit('receive_reaction', data.emoji));
 
