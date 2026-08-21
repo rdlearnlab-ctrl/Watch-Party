@@ -1,14 +1,16 @@
 // ==========================================
 // FIREBASE MODULAR AUTHENTICATION SETUP
 // ==========================================
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
 import { 
     getAuth, 
     signInWithEmailAndPassword, 
     createUserWithEmailAndPassword, 
     signOut, 
-    onAuthStateChanged 
-} from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+    onAuthStateChanged,
+    GoogleAuthProvider,
+    signInWithPopup
+} from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyCGkUPgeetqOHPHuED207A1vmrGos6Jr9M",
@@ -23,6 +25,7 @@ const firebaseConfig = {
 // Initialize Firebase App & Auth
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+const googleProvider = new GoogleAuthProvider();
 
 const authOverlay = document.getElementById('authOverlay');
 const mainApp = document.getElementById('mainApp');
@@ -30,6 +33,7 @@ const emailInput = document.getElementById('emailInput');
 const passwordInput = document.getElementById('passwordInput');
 const loginBtn = document.getElementById('loginBtn');
 const signupBtn = document.getElementById('signupBtn');
+const googleLoginBtn = document.getElementById('googleLoginBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 const authError = document.getElementById('authError');
 const currentUserDisplay = document.getElementById('currentUserDisplay');
@@ -42,7 +46,7 @@ onAuthStateChanged(auth, (user) => {
         appUser = user;
         authOverlay.style.display = 'none';
         mainApp.style.display = 'flex';
-        currentUserDisplay.innerText = user.email ? user.email.split('@')[0] : "User"; 
+        currentUserDisplay.innerText = user.displayName || (user.email ? user.email.split('@')[0] : "User"); 
         startLocalVideo(); // Only initialize media after login
     } else {
         appUser = null;
@@ -51,7 +55,7 @@ onAuthStateChanged(auth, (user) => {
     }
 });
 
-// Login Logic
+// Email Login Logic
 loginBtn.addEventListener('click', () => {
     authError.style.display = 'none';
     signInWithEmailAndPassword(auth, emailInput.value, passwordInput.value)
@@ -61,10 +65,20 @@ loginBtn.addEventListener('click', () => {
         });
 });
 
-// Signup Logic
+// Email Signup Logic
 signupBtn.addEventListener('click', () => {
     authError.style.display = 'none';
     createUserWithEmailAndPassword(auth, emailInput.value, passwordInput.value)
+        .catch(error => {
+            authError.innerText = error.message;
+            authError.style.display = 'block';
+        });
+});
+
+// Google Login Logic
+googleLoginBtn.addEventListener('click', () => {
+    authError.style.display = 'none';
+    signInWithPopup(auth, googleProvider)
         .catch(error => {
             authError.innerText = error.message;
             authError.style.display = 'block';
@@ -259,7 +273,7 @@ function appendMessage(msg, sender) {
     const msgElement = document.createElement('div');
     msgElement.classList.add('chat-message');
     msgElement.classList.add(sender === "You" ? 'self' : 'other');
-    msgElement.innerHTML = `<strong>${sender}:</strong> ${msg}`;
+    msgElement.innerHTML = `<strong>${sender}:</strong>${msg}`;
     chatBox.appendChild(msgElement);
     chatBox.scrollTop = chatBox.scrollHeight; 
 }
