@@ -72,6 +72,14 @@ const chatBox = document.getElementById('chatBox');
 function appendMessage(msg, sender) {
     const msgElement = document.createElement('div');
     msgElement.classList.add('chat-message');
+    
+    // THE FIX: Apply correct class based on the sender
+    if (sender === "You") {
+        msgElement.classList.add('self');
+    } else {
+        msgElement.classList.add('other');
+    }
+    
     msgElement.innerHTML = `<strong>${sender}:</strong> ${msg}`;
     chatBox.appendChild(msgElement);
     chatBox.scrollTop = chatBox.scrollHeight; 
