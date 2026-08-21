@@ -17,8 +17,8 @@ io.on('connection', (socket) => {
     socket.on('seek_video', (data) => socket.to(data.roomId).emit('receive_seek', data.time));
     socket.on('change_video_url', (data) => socket.to(data.roomId).emit('receive_video_url', data.url));
     
-    // Chat & Reactions
-    socket.on('send_chat', (data) => socket.to(data.roomId).emit('receive_chat', data.message));
+    // Chat & Reactions (Updated to pass the entire data object including the sender's name)
+    socket.on('send_chat', (data) => socket.to(data.roomId).emit('receive_chat', data));
     socket.on('send_reaction', (data) => socket.to(data.roomId).emit('receive_reaction', data.emoji));
 
     // Study Hub (Whiteboard & Timer)
