@@ -5,57 +5,76 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BingePlay - Watch Party</title>
     <link rel="stylesheet" href="style.css">
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
-
     <div class="main-wrapper">
-        <!-- LEFT PANEL: Video Player & Controls -->
+        <!-- Main Video Area -->
         <div class="video-section">
             <div class="room-header">
-                <h1>BingePlay</h1>
+                <h1>BINGEPLAY</h1>
                 <div class="room-controls">
                     <input type="text" id="roomInput" placeholder="Enter Room...">
                     <button id="joinRoomBtn">Join Room</button>
                 </div>
             </div>
-            
             <p>Current Room: <span id="roomDisplay">None</span></p>
+            
+            <div class="video-wrapper">
+                <video id="videoPlayer" controls></video>
+                <div id="reaction-container"></div>
+            </div>
 
-            <!-- Main Video Player -->
-            <video id="videoPlayer" controls></video>
-
-            <!-- URL & Local File Controls -->
             <div class="controls-row">
                 <input type="text" id="videoUrlInput" placeholder="Paste .mp4 link here...">
                 <button id="loadUrlBtn">Load URL</button>
                 <button id="uploadBtn">Play Local</button>
-                <input type="file" id="localFileInput" accept="video/mp4" style="display: none;">
+                <input type="file" id="localFileInput" accept="video/mp4,video/webm" style="display: none;">
             </div>
         </div>
 
-        <!-- RIGHT PANEL: Sidebar (Cams & Chat) -->
+        <!-- Sidebar -->
         <div class="sidebar">
             <div class="cams">
                 <h3>Face Cams</h3>
                 <div id="video-grid">
-                    <video id="myCam" autoplay playsinline></video>
+                    <video id="myCam" autoplay playsinline muted></video>
                 </div>
                 
-                <!-- Device Selection Dropdowns -->
-                <div class="device-selectors" style="display: flex; flex-direction: column; gap: 8px; margin-top: 12px;">
-                    <select id="cameraSelect" class="device-dropdown"></select>
-                    <select id="micSelect" class="device-dropdown"></select>
+                <select id="cameraSelect" class="device-dropdown" style="margin-top: 12px;"></select>
+                <select id="micSelect" class="device-dropdown" style="margin-top: 8px;"></select>
+                
+                <div class="cam-controls" style="margin-top: 12px;">
+                    <button id="muteBtn">Mute Mic</button>
+                    <button id="camToggleBtn">Disable Cam</button>
+                </div>
+                <div class="cam-controls" style="margin-top: 8px;">
+                    <button id="screenShareBtn">Share Screen</button>
+                    <button id="pttToggleBtn">PTT: OFF</button>
                 </div>
                 
-                <div class="cam-controls" style="display: flex; gap: 10px; margin-top: 12px;">
-                    <button id="muteBtn" style="flex: 1;">Mute Mic</button>
-                    <button id="screenShareBtn" style="flex: 1;">Share Screen</button>
-                </div>
+                <!-- Mobile PTT Button -->
+                <button id="holdToTalkBtn" style="display: none; width: 100%; margin-top: 12px; font-size: 18px; padding: 16px;">
+                    🎙️ HOLD TO TALK
+                </button>
+                <p id="pttHint" style="font-size: 12px; margin-top: 6px; display: none; color: #4b5563; font-weight: 700;">
+                    Desktop: Hold <kbd style="background:#111827; color:#fff; padding: 2px 6px; border-radius: 4px;">SPACE</kbd>
+                </p>
             </div>
 
             <div class="chat-container">
                 <h3>Live Chat</h3>
                 <div id="chatBox"></div>
+                
+                <!-- Reaction Bar -->
+                <div class="reaction-bar">
+                    <button class="reaction-btn" data-emoji="🔥">🔥</button>
+                    <button class="reaction-btn" data-emoji="😂">😂</button>
+                    <button class="reaction-btn" data-emoji="😲">😲</button>
+                    <button class="reaction-btn" data-emoji="💖">💖</button>
+                </div>
+
                 <div class="chat-input-area">
                     <input type="text" id="chatInput" placeholder="Type a message...">
                     <button id="sendChatBtn">Send</button>
@@ -63,10 +82,6 @@
             </div>
         </div>
     </div>
-
-    <!-- Socket.IO & PeerJS CDNs -->
-    <script src="/socket.io/socket.io.js"></script>
-    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
