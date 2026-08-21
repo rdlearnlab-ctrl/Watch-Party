@@ -98,8 +98,7 @@ const video = document.getElementById('videoPlayer');
 
 // PEERJS INITIALIZATION
 const peer = new Peer({
-    host: '0.peerjs.com',
-    port: 443,
+    // Letting PeerJS default to its stable cloud cluster instead of forcing 0.peerjs.com
     secure: true,
     config: {
         iceServers: [
@@ -145,13 +144,20 @@ let ytPlayer;
 let isYouTubeActive = false;
 let ytEmitLock = false;
 
-window.onYouTubeIframeAPIReady = function() {
+function initYouTubePlayer() {
     ytPlayer = new YT.Player('ytPlayer', {
         height: '100%',
         width: '100%',
         videoId: '',
         events: { 'onStateChange': onPlayerStateChange }
     });
+}
+
+// FIX: Check if YT is already loaded to prevent the black screen race condition
+if (window.YT && window.YT.Player) {
+    initYouTubePlayer();
+} else {
+    window.onYouTubeIframeAPIReady = initYouTubePlayer;
 }
 
 function onPlayerStateChange(event) {
