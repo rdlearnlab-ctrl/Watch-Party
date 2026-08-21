@@ -32,16 +32,26 @@
         <!-- LOBBY UI -->
         <div id="lobbySection" class="video-section" style="width: 100%; flex: 1; display: none;">
             <div class="room-header">
-                <h1>LOBBY</h1>
-                <button id="logoutBtn" style="background: #f43f5e; color: white;">Log Out</button>
+                <h1>BINGEPLAY LOBBY</h1>
+                <div>
+                    <button id="openProfileBtn" style="background: #a78bfa; color: #111827; margin-right: 12px;">👤 Profile</button>
+                    <button id="logoutBtn" style="background: #f43f5e; color: white;">Log Out</button>
+                </div>
             </div>
-            <p>Welcome back, <span id="currentUserDisplay" style="font-weight:700;"></span>! Join an active party or start your own.</p>
+            <p>Welcome back, <span id="currentUserDisplay" style="font-weight:700;"></span>! Find a public watch party or host your own.</p>
             
             <div class="lobby-controls" style="display: flex; gap: 20px; margin-bottom: 30px; flex-wrap: wrap;">
+                <!-- Start Party Box -->
                 <div style="flex: 1; background: #f9fafb; padding: 20px; border: 3px solid #111827; border-radius: 8px; box-shadow: 6px 6px 0px #111827;">
                     <h3>Start a Party</h3>
-                    <div style="display: flex; gap: 10px; margin-top: 10px;">
-                        <input type="text" id="newRoomInput" placeholder="Room Name..." style="flex: 1;">
+                    <div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
+                        <input type="text" id="newRoomInput" placeholder="Room Name..." style="flex: 1; min-width: 140px;">
+                        <select id="roomCategory" class="device-dropdown" style="width: auto;">
+                            <option value="Movie Night">🎬 Movie Night</option>
+                            <option value="Anime Binge">⚡ Anime Binge</option>
+                            <option value="Study Session">📚 Study Session</option>
+                            <option value="Just Chatting">💬 Just Chatting</option>
+                        </select>
                         <select id="roomVisibility" class="device-dropdown" style="width: auto;">
                             <option value="public">Public</option>
                             <option value="private">Private</option>
@@ -50,17 +60,25 @@
                     </div>
                 </div>
                 
+                <!-- Filter Rooms Box -->
                 <div style="flex: 1; background: #f9fafb; padding: 20px; border: 3px solid #111827; border-radius: 8px; box-shadow: 6px 6px 0px #111827;">
-                    <h3>Join Private</h3>
+                    <h3>Filter Lobbies</h3>
                     <div style="display: flex; gap: 10px; margin-top: 10px;">
-                        <input type="text" id="joinPrivateRoomInput" placeholder="Enter Private Code..." style="flex: 1;">
+                        <select id="filterCategory" class="device-dropdown" style="flex: 1;">
+                            <option value="all">🌐 All Categories</option>
+                            <option value="Movie Night">🎬 Movie Night</option>
+                            <option value="Anime Binge">⚡ Anime Binge</option>
+                            <option value="Study Session">📚 Study Session</option>
+                            <option value="Just Chatting">💬 Just Chatting</option>
+                        </select>
+                        <input type="text" id="joinPrivateRoomInput" placeholder="Private Code..." style="width: 130px;">
                         <button id="joinPrivateRoomBtn" style="background: #3b82f6; color: white;">Join</button>
                     </div>
                 </div>
             </div>
 
             <h3>Active Public Rooms</h3>
-            <div id="publicRoomsList" style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px; overflow-y: auto; max-height: 40vh;">
+            <div id="publicRoomsList" style="display: flex; flex-direction: column; gap: 12px; margin-top: 12px; overflow-y: auto; max-height: 35vh;">
             </div>
         </div>
 
@@ -136,6 +154,10 @@
                 <div id="chatSection" class="chat-container">
                     <div id="chatBox"></div>
                     
+                    <div class="chat-input-area" style="margin-bottom: 8px;">
+                        <button id="icebreakerBtn" style="background: #fef08a; color: #111827; font-size: 13px; padding: 8px 12px; width: 100%;">🎲 Roll Icebreaker</button>
+                    </div>
+
                     <div class="reaction-bar">
                         <button class="reaction-btn" data-emoji="🔥">🔥</button>
                         <button class="reaction-btn" data-emoji="😂">😂</button>
@@ -159,6 +181,24 @@
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Profile Modal -->
+    <div id="profileModal" class="auth-overlay" style="display: none;">
+        <div class="auth-modal">
+            <h1>USER PROFILE</h1>
+            <input type="text" id="profileBioInput" placeholder="Write a short bio...">
+            <select id="profileGenreSelect" class="device-dropdown">
+                <option value="Sci-Fi & Fantasy">Sci-Fi & Fantasy</option>
+                <option value="Anime & Animation">Anime & Animation</option>
+                <option value="Horror & Thriller">Horror & Thriller</option>
+                <option value="Comedy & Action">Comedy & Action</option>
+            </select>
+            <div class="auth-buttons">
+                <button id="saveProfileBtn" style="background: #10b981; color: white;">Save Profile</button>
+                <button id="closeProfileBtn" style="background: #f43f5e; color: white;">Close</button>
             </div>
         </div>
     </div>
