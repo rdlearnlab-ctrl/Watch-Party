@@ -280,6 +280,7 @@ h3 {
     color: white;
     padding: 0 20px;
 }
+
 /* --- DEVICE DROPDOWNS --- */
 .device-dropdown {
     background: #f9fafb;
@@ -301,15 +302,16 @@ h3 {
     background: #ffffff;
     box-shadow: 4px 4px 0px #111827;
 }
-/* --- MOBILE RESPONSIVE DESIGN --- */
+
+/* --- MOBILE RESPONSIVE DESIGN (POLISHED) --- */
 @media (max-width: 900px) {
     body {
-        overflow: auto; /* Allows natural scrolling on phones */
-        padding: 12px;
+        overflow: auto; 
+        padding: 10px;
     }
 
     .main-wrapper {
-        flex-direction: column; /* Stacks the video section and sidebar vertically */
+        flex-direction: column; 
         height: auto;
         max-width: 100%;
         gap: 16px;
@@ -317,29 +319,66 @@ h3 {
 
     .video-section {
         padding: 16px;
+        box-shadow: 6px 6px 0px #111827;
+    }
+
+    .room-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
     }
 
     .room-header h1 {
-        font-size: 32px; /* Scales down the massive title for mobile screens */
+        font-size: 30px; 
+        letter-spacing: -1px;
+    }
+
+    .room-controls {
+        display: flex;
+        gap: 8px;
+    }
+
+    .room-controls input {
+        flex-grow: 1;
     }
 
     #videoPlayer {
-        max-height: 250px; /* Keeps the player compact on small displays */
+        max-height: 240px; 
+    }
+
+    .controls-row {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .controls-row input, 
+    .controls-row button {
+        width: 100%;
     }
 
     .sidebar {
         min-width: 100%;
+        gap: 16px;
+    }
+
+    .cams, .chat-container {
+        padding: 16px;
+        box-shadow: 6px 6px 0px #111827;
     }
 
     #video-grid {
-        max-height: 250px; /* Limits camera stacking height with scroll */
+        max-height: 220px; 
     }
 
     .chat-container {
-        height: 400px; /* Gives the chat a fixed, usable typing area on mobile */
+        height: 380px; 
     }
 
     #chatBox {
-        height: 250px;
+        height: 220px;
+    }
+
+    button {
+        padding: 10px 16px; 
     }
 }
