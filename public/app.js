@@ -39,17 +39,22 @@ const authError = document.getElementById('authError');
 const currentUserDisplay = document.getElementById('currentUserDisplay');
 
 let appUser = null;
+let myName = "User"; // Added to track the current user's name
 
 // Listen for auth state changes
 onAuthStateChanged(auth, (user) => {
     if (user) {
         appUser = user;
+        // Grab Google Display Name, or default to the first half of their email
+        myName = user.displayName || (user.email ? user.email.split('@')[0] : "User");
+        
         authOverlay.style.display = 'none';
         mainApp.style.display = 'flex';
-        currentUserDisplay.innerText = user.displayName || (user.email ? user.email.split('@')[0] : "User"); 
+        currentUserDisplay.innerText = myName; 
         startLocalVideo(); // Only initialize media after login
     } else {
         appUser = null;
+        myName = "User";
         authOverlay.style.display = 'flex';
         mainApp.style.display = 'none';
     }
@@ -98,7 +103,6 @@ const video = document.getElementById('videoPlayer');
 
 // PEERJS INITIALIZATION
 const peer = new Peer({
-    // Letting PeerJS default to its stable cloud cluster instead of forcing 0.peerjs.com
     secure: true,
     config: {
         iceServers: [
@@ -153,7 +157,6 @@ function initYouTubePlayer() {
     });
 }
 
-// FIX: Check if YT is already loaded to prevent the black screen race condition
 if (window.YT && window.YT.Player) {
     initYouTubePlayer();
 } else {
@@ -288,13 +291,18 @@ sendChatBtn.addEventListener('click', () => {
     const msg = chatInput.value;
     if (msg.trim() !== "" && currentRoom) {
         appendMessage(msg, "You");
-        socket.emit('send_chat', { roomId: currentRoom, message: msg });
+        // Emitting the message along with the sender's real name
+        socket.emit('send_chat', { roomId: currentRoom, message: msg, sender: myName });
         chatInput.value = ''; 
     }
 });
 
 chatInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') { e.preventDefault(); sendChatBtn.click(); } });
-socket.on('receive_chat', (msg) => { appendMessage(msg, "Friend"); });
+
+// Receiving the chat payload with the dynamic sender name
+socket.on('receive_chat', (data) => { 
+    appendMessage(data.message, data.sender || "Friend"); 
+});
 
 // 4. MAIN SCREEN WHITEBOARD LOGIC
 const canvas = document.getElementById('whiteboard');
