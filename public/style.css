@@ -18,6 +18,7 @@ body {
     justify-content: center;
     padding: 3vh 2vw;
     overflow: hidden; 
+    transition: background-color 0.3s ease;
 }
 
 /* --- MAIN LAYOUT --- */
@@ -38,6 +39,7 @@ body {
     padding: 30px;
     display: flex;
     flex-direction: column;
+    transition: all 0.3s ease;
 }
 
 .sidebar {
@@ -63,6 +65,7 @@ body {
     box-shadow: 8px 8px 0px #111827;
     padding: 24px;
     flex-shrink: 0; 
+    transition: all 0.3s ease;
 }
 
 /* --- HEADERS & TYPOGRAPHY --- */
@@ -559,4 +562,89 @@ video.video-off {
 .join-public-btn {
     background: #a78bfa; 
     color: #111827;
+}
+
+/* --- THEATER MODE --- */
+body.theater-mode {
+    background-color: #000 !important;
+    background-image: none !important;
+    color: #fff;
+}
+
+body.theater-mode .video-section,
+body.theater-mode .cams,
+body.theater-mode .chat-container,
+body.theater-mode .study-container {
+    background: #0f0f0f !important;
+    border-color: #333 !important;
+    box-shadow: none !important;
+}
+
+body.theater-mode .room-header h1,
+body.theater-mode h3,
+body.theater-mode p {
+    color: #ccc !important;
+}
+
+body.theater-mode .room-header h1,
+body.theater-mode h3 {
+    border-bottom-color: #333 !important;
+}
+
+body.theater-mode input[type="text"] {
+    background: #222 !important;
+    color: #fff !important;
+    border-color: #444 !important;
+}
+
+body.theater-mode button:not(#theaterModeBtn) {
+    border-color: #333 !important;
+    box-shadow: none !important;
+}
+
+body.theater-mode .tab-btn {
+    background: #222 !important;
+    color: #888 !important;
+    border-color: #333 !important;
+    box-shadow: none !important;
+}
+
+body.theater-mode .tab-btn.active {
+    background: #444 !important;
+    color: #fff !important;
+}
+
+body.theater-mode #chatBox {
+    background: #111 !important;
+    border-color: #333 !important;
+}
+
+body.theater-mode .chat-message.other {
+    background: #222 !important;
+    color: #ddd !important;
+    border-color: #444 !important;
+    box-shadow: none !important;
+}
+
+body.theater-mode .chat-message.self {
+    border-color: #333 !important;
+    box-shadow: none !important;
+}
+
+body.theater-mode .chat-message strong {
+    color: #aaa !important;
+    border-bottom-color: #555 !important;
+}
+
+body.theater-mode .device-dropdown {
+    background: #222 !important;
+    color: #fff !important;
+    border-color: #444 !important;
+    box-shadow: none !important;
+}
+
+body.theater-mode .reaction-btn {
+    background: #222 !important;
+    border-color: #444 !important;
+    box-shadow: none !important;
 }
