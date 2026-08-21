@@ -112,7 +112,6 @@ const saveProfileBtn = document.getElementById('saveProfileBtn');
 openProfileBtn.addEventListener('click', () => profileModal.style.display = 'flex');
 closeProfileBtn.addEventListener('click', () => profileModal.style.display = 'none');
 
-// SAVE PROFILE TO FIRESTORE
 saveProfileBtn.addEventListener('click', async () => {
     if (!appUser) return;
     saveProfileBtn.innerText = "Saving...";
@@ -137,20 +136,6 @@ saveProfileBtn.addEventListener('click', async () => {
     saveProfileBtn.innerText = "Save Profile";
 });
 
-// Icebreaker Logic
-const icebreakers = [
-    "What is the absolute best movie soundtrack of all time?",
-    "If you could live inside any animated movie universe, which would you pick?",
-    "What's a hot take opinion you have about cinema?",
-    "If you were hosting a talk show, who would be your first guest?"
-];
-document.getElementById('icebreakerBtn').addEventListener('click', () => {
-    const randomQuestion = icebreakers[Math.floor(Math.random() * icebreakers.length)];
-    const fullMsg = `🎲 Icebreaker: ${randomQuestion}`;
-    appendMessage(fullMsg, "System");
-    if (currentRoom) socket.emit('send_chat', { roomId: currentRoom, message: fullMsg, sender: "System" });
-});
-
 // ==========================================
 // PEERJS, WEBTORRENT & SOCKET SETUP
 // ==========================================
@@ -158,9 +143,18 @@ const socket = io();
 const video = document.getElementById('videoPlayer');
 const wtClient = new WebTorrent();
 
+// ROBUST ICE SERVERS
 const peer = new Peer({
     secure: true,
-    config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
+    config: {
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' }
+        ]
+    }
 }); 
 let myPeerId = null;
 
@@ -343,7 +337,7 @@ localFileInput.addEventListener('change', function() {
 });
 
 // ==========================================
-// 3. TABS, CHAT & THEATER MODE LOGIC
+// 3. TABS, CHAT, ICEBREAKERS & THEATER MODE 
 // ==========================================
 const tabChatBtn = document.getElementById('tabChatBtn');
 const tabStudyBtn = document.getElementById('tabStudyBtn');
@@ -387,6 +381,19 @@ sendChatBtn.addEventListener('click', () => {
 
 chatInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') { e.preventDefault(); sendChatBtn.click(); } });
 socket.on('receive_chat', (data) => { appendMessage(data.message, data.sender || "Friend"); });
+
+const icebreakers = [
+    "What is the absolute best movie soundtrack of all time?",
+    "If you could live inside any animated movie universe, which would you pick?",
+    "What's a hot take opinion you have about cinema?",
+    "If you were hosting a talk show, who would be your first guest?"
+];
+document.getElementById('icebreakerBtn').addEventListener('click', () => {
+    const randomQuestion = icebreakers[Math.floor(Math.random() * icebreakers.length)];
+    const fullMsg = `🎲 Icebreaker: ${randomQuestion}`;
+    appendMessage(fullMsg, "System");
+    if (currentRoom) socket.emit('send_chat', { roomId: currentRoom, message: fullMsg, sender: "System" });
+});
 
 // ==========================================
 // 4. WHITEBOARD & 5. POMODORO TIMER LOGIC
@@ -458,7 +465,7 @@ resetTimerBtn.addEventListener('click', () => { pauseTimer(); timeLeft = 25 * 60
 socket.on('receive_sync_timer', (data) => { timeLeft = data.timeLeft; updateTimerDisplay(); if (data.isRunning && !isTimerRunning) { startSyncTimer(); } else if (!data.isRunning && isTimerRunning) { clearInterval(timerInterval); isTimerRunning = false; startTimerBtn.innerText = "Start Sync"; } });
 
 // ==========================================
-// 6. WEBRTC & HARDWARE CONTROLS
+// 6. WEBRTC & HARDWARE CONTROLS (ROBUST FIX)
 // ==========================================
 const videoGrid = document.getElementById('video-grid');
 const myCam = document.getElementById('myCam');
@@ -468,10 +475,15 @@ const screenShareBtn = document.getElementById('screenShareBtn');
 const cameraSelect = document.getElementById('cameraSelect');
 const micSelect = document.getElementById('micSelect');
 
-let localStream; let activeCalls = []; let screenCalls = []; let currentScreenStream = null; let isScreenSharing = false; let isCamEnabled = true;
+let localStream = null; 
+const peers = {}; // Store active calls
+let currentScreenStream = null; 
+let isScreenSharing = false; 
+let isCamEnabled = true;
 
 async function startLocalVideo() {
-    if (localStream) return; 
+    if (localStream) return localStream; 
+
     try {
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         myCam.srcObject = localStream;
@@ -485,36 +497,61 @@ async function startLocalVideo() {
             else if (device.kind === 'audioinput') { option.text = device.label || 'Microphone ' + (micSelect.length + 1); micSelect.appendChild(option); }
         });
 
+        // Answer incoming calls
         peer.on('call', (call) => {
             call.answer(localStream); 
-            const newFriendCam = document.createElement('video');
-            if (call.metadata && call.metadata.type === 'screenshare') {
-                call.on('stream', (friendStream) => {
-                    addVideoStream(newFriendCam, friendStream);
+            const friendVideo = document.createElement('video');
+            friendVideo.id = `video-${call.peer}`;
+
+            call.on('stream', (friendStream) => {
+                if (call.metadata && call.metadata.type === 'screenshare') {
                     isBoardOpen = false; toggleBoardUI(false); isYouTubeActive = false;
                     document.getElementById('ytPlayer').style.display = 'none'; document.getElementById('videoPlayer').style.display = 'block';
                     video.removeAttribute('src'); video.srcObject = friendStream; video.play();
-                });
-            } else { activeCalls.push(call); call.on('stream', (friendStream) => { addVideoStream(newFriendCam, friendStream); }); }
-            call.on('close', () => { newFriendCam.remove(); });
+                } else { 
+                    addVideoStream(friendVideo, friendStream); 
+                }
+            });
+
+            call.on('close', () => friendVideo.remove());
+            call.on('error', (err) => { console.error("Peer call error:", err); friendVideo.remove(); });
+
+            peers[call.peer] = call;
         });
+
+        return localStream;
     } catch (error) { console.error("Error accessing media:", error); }
 }
 
-socket.on('user_connected', (newPeerId) => { connectToNewUser(newPeerId, localStream); });
+socket.on('user_connected', async (newPeerId) => { 
+    const stream = localStream || await startLocalVideo();
+    if (stream && newPeerId !== myPeerId) connectToNewUser(newPeerId, stream); 
+});
 
 function connectToNewUser(peerId, stream) {
-    const call = peer.call(peerId, stream); activeCalls.push(call); 
-    const newFriendCam = document.createElement('video');
-    call.on('stream', (friendStream) => { addVideoStream(newFriendCam, friendStream); });
-    call.on('close', () => { newFriendCam.remove(); });
-    if (isScreenSharing && currentScreenStream) { const screenCall = peer.call(peerId, currentScreenStream, { metadata: { type: 'screenshare' } }); screenCalls.push(screenCall); }
+    if (peers[peerId]) peers[peerId].close(); // Clean up stale calls
+
+    const call = peer.call(peerId, stream); 
+    const friendVideo = document.createElement('video');
+    friendVideo.id = `video-${peerId}`;
+
+    call.on('stream', (friendStream) => addVideoStream(friendVideo, friendStream));
+    call.on('close', () => { friendVideo.remove(); delete peers[peerId]; });
+    call.on('error', (err) => { console.error("Call error:", err); friendVideo.remove(); delete peers[peerId]; });
+
+    peers[peerId] = call;
+
+    if (isScreenSharing && currentScreenStream) { 
+        peer.call(peerId, currentScreenStream, { metadata: { type: 'screenshare' } }); 
+    }
 }
 
 function addVideoStream(videoElement, stream) {
     videoElement.srcObject = stream; videoElement.autoplay = true; videoElement.playsInline = true; makeVideoClickable(videoElement, stream);
-    let exists = false; for (let i = 0; i < videoGrid.children.length; i++) { if (videoGrid.children[i].srcObject === stream) exists = true; }
-    if (!exists) videoGrid.append(videoElement);
+    
+    // Prevent duplicates
+    const existing = document.getElementById(videoElement.id);
+    if (!existing) videoGrid.append(videoElement);
 }
 
 function makeVideoClickable(videoElement, stream) {
@@ -548,7 +585,12 @@ screenShareBtn.addEventListener('click', async () => {
     if (!isScreenSharing) {
         try {
             currentScreenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
-            activeCalls.forEach(call => { screenCalls.push(peer.call(call.peer, currentScreenStream, { metadata: { type: 'screenshare' } })); });
+            
+            // Loop through stored robust peer objects
+            Object.values(peers).forEach(call => {
+                peer.call(call.peer, currentScreenStream, { metadata: { type: 'screenshare' } }); 
+            });
+
             isBoardOpen = false; toggleBoardUI(false); isYouTubeActive = false; document.getElementById('ytPlayer').style.display = 'none'; document.getElementById('videoPlayer').style.display = 'block';
             video.removeAttribute('src'); video.srcObject = currentScreenStream; video.play();
             isScreenSharing = true; screenShareBtn.innerText = "Stop Sharing"; screenShareBtn.style.background = "#f43f5e"; screenShareBtn.style.color = "white";
@@ -558,15 +600,21 @@ screenShareBtn.addEventListener('click', async () => {
     } else { stopScreenShare(); }
 });
 
-function stopScreenShare() { if (!isScreenSharing) return; if (currentScreenStream) currentScreenStream.getTracks().forEach(track => track.stop()); screenCalls.forEach(call => call.close()); screenCalls = []; currentScreenStream = null; video.srcObject = null; isScreenSharing = false; screenShareBtn.innerText = "Share Screen"; screenShareBtn.style.background = ""; screenShareBtn.style.color = ""; }
+function stopScreenShare() { if (!isScreenSharing) return; if (currentScreenStream) currentScreenStream.getTracks().forEach(track => track.stop()); currentScreenStream = null; video.srcObject = null; isScreenSharing = false; screenShareBtn.innerText = "Share Screen"; screenShareBtn.style.background = ""; screenShareBtn.style.color = ""; }
 
 async function switchDevice() {
     if (isScreenSharing) return; const constraints = { audio: { deviceId: micSelect.value ? { exact: micSelect.value } : undefined }, video: { deviceId: cameraSelect.value ? { exact: cameraSelect.value } : undefined } };
     try {
         const newStream = await navigator.mediaDevices.getUserMedia(constraints); myCam.srcObject = newStream;
         const newVideoTrack = newStream.getVideoTracks()[0]; const newAudioTrack = newStream.getAudioTracks()[0];
-        activeCalls.forEach(call => { const senderVideo = call.peerConnection.getSenders().find(s => s.track.kind === 'video'); const senderAudio = call.peerConnection.getSenders().find(s => s.track.kind === 'audio'); if (senderVideo) senderVideo.replaceTrack(newVideoTrack); if (senderAudio) senderAudio.replaceTrack(newAudioTrack); });
-        localStream.getTracks().forEach(track => track.stop()); localStream = newStream; makeVideoClickable(myCam, localStream);
+        
+        Object.values(peers).forEach(call => { 
+            const senderVideo = call.peerConnection.getSenders().find(s => s.track.kind === 'video'); const senderAudio = call.peerConnection.getSenders().find(s => s.track.kind === 'audio'); 
+            if (senderVideo) senderVideo.replaceTrack(newVideoTrack); if (senderAudio) senderAudio.replaceTrack(newAudioTrack); 
+        });
+
+        if (localStream) localStream.getTracks().forEach(track => track.stop()); 
+        localStream = newStream; makeVideoClickable(myCam, localStream);
     } catch (err) { console.error("Error switching devices", err); }
 }
 cameraSelect.addEventListener('change', switchDevice); micSelect.addEventListener('change', switchDevice);
