@@ -68,6 +68,9 @@ io.on('connection', (socket) => {
     socket.on('send_chat', (data) => socket.to(data.roomId).emit('receive_chat', data));
     socket.on('send_reaction', (data) => socket.to(data.roomId).emit('receive_reaction', data.emoji));
 
+    // Soundboard
+    socket.on('play_sound', (data) => socket.to(data.roomId).emit('receive_sound', data.soundId));
+
     // Study Hub (Whiteboard & Timer)
     socket.on('draw_line', (data) => socket.to(data.roomId).emit('receive_draw_line', data));
     socket.on('clear_board', (roomId) => socket.to(roomId).emit('receive_clear_board'));
