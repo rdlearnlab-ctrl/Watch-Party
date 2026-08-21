@@ -51,6 +51,36 @@ let appUser = null;
 let myName = "User"; 
 let globalRooms = [];
 
+// ==========================================
+// CUSTOM SOUND EFFECTS SETUP
+// ==========================================
+const chatPopSound = new Audio('./soundeffects/ding-sound-effect_2.mp3');
+const joinSound = new Audio('./soundeffects/bone-crack.mp3'); // Keeping this variable in case you want to map it to a button later
+const rizzSound = new Audio('./soundeffects/rizz-sound-effect.mp3');
+const omgSound = new Audio('./soundeffects/oh-my-god-bro-oh-hell-nah-man.mp3');
+const fahhhSound = new Audio('./soundeffects/fahhh_KcgAXfs.mp3');
+
+chatPopSound.volume = 0.5;
+joinSound.volume = 0.6;
+rizzSound.volume = 0.5;
+omgSound.volume = 0.5;
+fahhhSound.volume = 0.5;
+
+function playSound(audioElement) {
+    audioElement.currentTime = 0; 
+    audioElement.play().catch(() => {}); 
+}
+
+function playReactionSound(emoji) {
+    if (emoji === '🔥') {
+        playSound(rizzSound);
+    } else if (emoji === '😲') {
+        playSound(omgSound);
+    } else {
+        playSound(fahhhSound); 
+    }
+}
+
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         appUser = user;
@@ -62,7 +92,6 @@ onAuthStateChanged(auth, async (user) => {
         roomSection.style.display = 'none';
         currentUserDisplay.innerText = myName; 
 
-        // FETCH USER PROFILE FROM FIRESTORE
         try {
             const userDoc = await getDoc(doc(db, "users", user.uid));
             if (userDoc.exists()) {
@@ -143,7 +172,6 @@ const socket = io();
 const video = document.getElementById('videoPlayer');
 const wtClient = new WebTorrent();
 
-// ROBUST ICE SERVERS
 const peer = new Peer({
     secure: true,
     config: {
@@ -370,17 +398,24 @@ function appendMessage(msg, sender) {
     chatBox.scrollTop = chatBox.scrollHeight; 
 }
 
+// SEND CHAT BUTTON - PLAYS DING LOCALLY WHEN YOU CLICK
 sendChatBtn.addEventListener('click', () => {
     const msg = chatInput.value;
     if (msg.trim() !== "" && currentRoom) {
         appendMessage(msg, "You");
         socket.emit('send_chat', { roomId: currentRoom, message: msg, sender: myName });
         chatInput.value = ''; 
+        playSound(chatPopSound); // <--- Play sound when you click send!
     }
 });
 
 chatInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') { e.preventDefault(); sendChatBtn.click(); } });
-socket.on('receive_chat', (data) => { appendMessage(data.message, data.sender || "Friend"); });
+
+// RECEIVE CHAT - NO AUTOMATIC SOUND
+socket.on('receive_chat', (data) => { 
+    appendMessage(data.message, data.sender || "Friend"); 
+    // Removed automatic sound here!
+});
 
 const icebreakers = [
     "What is the absolute best movie soundtrack of all time?",
@@ -465,7 +500,7 @@ resetTimerBtn.addEventListener('click', () => { pauseTimer(); timeLeft = 25 * 60
 socket.on('receive_sync_timer', (data) => { timeLeft = data.timeLeft; updateTimerDisplay(); if (data.isRunning && !isTimerRunning) { startSyncTimer(); } else if (!data.isRunning && isTimerRunning) { clearInterval(timerInterval); isTimerRunning = false; startTimerBtn.innerText = "Start Sync"; } });
 
 // ==========================================
-// 6. WEBRTC & HARDWARE CONTROLS (ROBUST FIX)
+// 6. WEBRTC & HARDWARE CONTROLS
 // ==========================================
 const videoGrid = document.getElementById('video-grid');
 const myCam = document.getElementById('myCam');
@@ -476,7 +511,7 @@ const cameraSelect = document.getElementById('cameraSelect');
 const micSelect = document.getElementById('micSelect');
 
 let localStream = null; 
-const peers = {}; // Store active calls
+const peers = {}; 
 let currentScreenStream = null; 
 let isScreenSharing = false; 
 let isCamEnabled = true;
@@ -497,7 +532,6 @@ async function startLocalVideo() {
             else if (device.kind === 'audioinput') { option.text = device.label || 'Microphone ' + (micSelect.length + 1); micSelect.appendChild(option); }
         });
 
-        // Answer incoming calls
         peer.on('call', (call) => {
             call.answer(localStream); 
             const friendVideo = document.createElement('video');
@@ -523,13 +557,16 @@ async function startLocalVideo() {
     } catch (error) { console.error("Error accessing media:", error); }
 }
 
+// USER JOINS - NO AUTOMATIC SOUND
 socket.on('user_connected', async (newPeerId) => { 
+    // Removed automatic sound here!
+    
     const stream = localStream || await startLocalVideo();
     if (stream && newPeerId !== myPeerId) connectToNewUser(newPeerId, stream); 
 });
 
 function connectToNewUser(peerId, stream) {
-    if (peers[peerId]) peers[peerId].close(); // Clean up stale calls
+    if (peers[peerId]) peers[peerId].close(); 
 
     const call = peer.call(peerId, stream); 
     const friendVideo = document.createElement('video');
@@ -549,7 +586,6 @@ function connectToNewUser(peerId, stream) {
 function addVideoStream(videoElement, stream) {
     videoElement.srcObject = stream; videoElement.autoplay = true; videoElement.playsInline = true; makeVideoClickable(videoElement, stream);
     
-    // Prevent duplicates
     const existing = document.getElementById(videoElement.id);
     if (!existing) videoGrid.append(videoElement);
 }
@@ -569,42 +605,23 @@ function setMicState(enabled) {
     if (audioTrack) { 
         audioTrack.enabled = enabled; 
         muteBtn.innerText = enabled ? "Mute Mic" : "Unmute Mic"; 
-        
-        if (enabled) { 
-            muteBtn.classList.add('talking'); 
-        } else { 
-            muteBtn.classList.remove('talking'); 
-        }
-        
-        // Broadcast state to friends
-        if (currentRoom) {
-            socket.emit('toggle_mute', { roomId: currentRoom, peerId: myPeerId, isMuted: !enabled });
-        }
+        if (enabled) { muteBtn.classList.add('talking'); } else { muteBtn.classList.remove('talking'); }
+        if (currentRoom) { socket.emit('toggle_mute', { roomId: currentRoom, peerId: myPeerId, isMuted: !enabled }); }
     }
 }
 
-muteBtn.addEventListener('click', () => { 
-    if (!localStream || isPttMode) return; 
-    setMicState(!localStream.getAudioTracks()[0].enabled); 
-});
-
+muteBtn.addEventListener('click', () => { if (!localStream || isPttMode) return; setMicState(!localStream.getAudioTracks()[0].enabled); });
 camToggleBtn.addEventListener('click', () => { 
     if (!localStream) return; 
     const videoTrack = localStream.getVideoTracks()[0]; 
     if (videoTrack) { 
-        isCamEnabled = !isCamEnabled; 
-        videoTrack.enabled = isCamEnabled; 
+        isCamEnabled = !isCamEnabled; videoTrack.enabled = isCamEnabled; 
         camToggleBtn.innerText = isCamEnabled ? "Disable Cam" : "Enable Cam"; 
         myCam.classList.toggle('video-off', !isCamEnabled); 
-        
-        // Broadcast state to friends
-        if (currentRoom) {
-            socket.emit('toggle_cam', { roomId: currentRoom, peerId: myPeerId, isCamOff: !isCamEnabled });
-        }
+        if (currentRoom) { socket.emit('toggle_cam', { roomId: currentRoom, peerId: myPeerId, isCamOff: !isCamEnabled }); }
     } 
 });
 
-// LISTEN FOR FRIENDS' HARDWARE CHANGES
 socket.on('peer_muted', (data) => {
     const friendVid = document.getElementById(`video-${data.peerId}`);
     if (friendVid) friendVid.classList.toggle('peer-muted', data.isMuted);
@@ -629,12 +646,7 @@ screenShareBtn.addEventListener('click', async () => {
     if (!isScreenSharing) {
         try {
             currentScreenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
-            
-            // Loop through stored robust peer objects
-            Object.values(peers).forEach(call => {
-                peer.call(call.peer, currentScreenStream, { metadata: { type: 'screenshare' } }); 
-            });
-
+            Object.values(peers).forEach(call => { peer.call(call.peer, currentScreenStream, { metadata: { type: 'screenshare' } }); });
             isBoardOpen = false; toggleBoardUI(false); isYouTubeActive = false; document.getElementById('ytPlayer').style.display = 'none'; document.getElementById('videoPlayer').style.display = 'block';
             video.removeAttribute('src'); video.srcObject = currentScreenStream; video.play();
             isScreenSharing = true; screenShareBtn.innerText = "Stop Sharing"; screenShareBtn.style.background = "#f43f5e"; screenShareBtn.style.color = "white";
@@ -651,19 +663,43 @@ async function switchDevice() {
     try {
         const newStream = await navigator.mediaDevices.getUserMedia(constraints); myCam.srcObject = newStream;
         const newVideoTrack = newStream.getVideoTracks()[0]; const newAudioTrack = newStream.getAudioTracks()[0];
-        
         Object.values(peers).forEach(call => { 
             const senderVideo = call.peerConnection.getSenders().find(s => s.track.kind === 'video'); const senderAudio = call.peerConnection.getSenders().find(s => s.track.kind === 'audio'); 
             if (senderVideo) senderVideo.replaceTrack(newVideoTrack); if (senderAudio) senderAudio.replaceTrack(newAudioTrack); 
         });
-
         if (localStream) localStream.getTracks().forEach(track => track.stop()); 
         localStream = newStream; makeVideoClickable(myCam, localStream);
     } catch (err) { console.error("Error switching devices", err); }
 }
 cameraSelect.addEventListener('change', switchDevice); micSelect.addEventListener('change', switchDevice);
 
-// 7. FLOATING REACTIONS LOGIC
+// 7. FLOATING REACTIONS LOGIC & SOUND TRIGGERS
 const reactionBtns = document.querySelectorAll('.reaction-btn'); const reactionContainer = document.getElementById('reaction-container');
-if (reactionBtns.length > 0 && reactionContainer) { reactionBtns.forEach(btn => { btn.addEventListener('click', () => { const emoji = btn.getAttribute('data-emoji'); showReaction(emoji); if (currentRoom) socket.emit('send_reaction', { roomId: currentRoom, emoji: emoji }); }); }); socket.on('receive_reaction', (emoji) => { showReaction(emoji); }); }
-function showReaction(emoji) { if (!reactionContainer) return; const el = document.createElement('div'); el.classList.add('floating-emoji'); el.innerText = emoji; el.style.left = `${Math.floor(Math.random() * 80) + 10}%`; reactionContainer.appendChild(el); setTimeout(() => { el.remove(); }, 2500); }
+
+if (reactionBtns.length > 0 && reactionContainer) { 
+    // CLICK LISTENER - PLAYS SOUND LOCALLY WHEN YOU CLICK
+    reactionBtns.forEach(btn => { 
+        btn.addEventListener('click', () => { 
+            const emoji = btn.getAttribute('data-emoji'); 
+            showReaction(emoji); 
+            playReactionSound(emoji); // <--- Sound plays when YOU click!
+            if (currentRoom) socket.emit('send_reaction', { roomId: currentRoom, emoji: emoji }); 
+        }); 
+    }); 
+    
+    // RECEIVE REACTION - NO AUTOMATIC SOUND
+    socket.on('receive_reaction', (emoji) => { 
+        showReaction(emoji); 
+        // Removed automatic sound here!
+    }); 
+}
+
+function showReaction(emoji) { 
+    if (!reactionContainer) return; 
+    const el = document.createElement('div'); 
+    el.classList.add('floating-emoji'); 
+    el.innerText = emoji; 
+    el.style.left = `${Math.floor(Math.random() * 80) + 10}%`; 
+    reactionContainer.appendChild(el); 
+    setTimeout(() => { el.remove(); }, 2500); 
+}
