@@ -21,11 +21,14 @@ io.on('connection', (socket) => {
     socket.on('send_chat', (data) => socket.to(data.roomId).emit('receive_chat', data.message));
     socket.on('send_reaction', (data) => socket.to(data.roomId).emit('receive_reaction', data.emoji));
 
-    // NEW: Study Hub (Whiteboard & Timer)
+    // Study Hub (Whiteboard & Timer)
     socket.on('draw_line', (data) => socket.to(data.roomId).emit('receive_draw_line', data));
     socket.on('clear_board', (roomId) => socket.to(roomId).emit('receive_clear_board'));
     socket.on('sync_timer', (data) => socket.to(data.roomId).emit('receive_sync_timer', data));
+    
+    // NEW: Sync Whiteboard Screen Swap
+    socket.on('toggle_board', (data) => socket.to(data.roomId).emit('receive_toggle_board', data.isOpen));
 });
 
 const PORT = process.env.PORT || 3000;
-http.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+http.listen(PORT, () => console.log(`Server running on port ${PORT}`));s
