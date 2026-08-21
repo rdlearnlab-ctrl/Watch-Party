@@ -25,6 +25,16 @@
             <div class="video-wrapper">
                 <video id="videoPlayer" controls></video>
                 <div id="ytPlayer" style="display: none;"></div>
+                
+                <!-- NEW: Main Screen Whiteboard -->
+                <div id="whiteboardContainer" style="display: none;">
+                    <div class="board-floating-tools">
+                        <input type="color" id="colorPicker" value="#111827">
+                        <button id="clearBoardBtn">Clear</button>
+                    </div>
+                    <canvas id="whiteboard"></canvas>
+                </div>
+
                 <div id="reaction-container"></div>
             </div>
 
@@ -32,6 +42,7 @@
                 <input type="text" id="videoUrlInput" placeholder="Paste YouTube or .mp4 link here...">
                 <button id="loadUrlBtn">Load Video</button>
                 <button id="uploadBtn">Play Local</button>
+                <button id="openBoardBtn" style="background: #a78bfa; color: #111827;">Open Whiteboard</button>
                 <input type="file" id="localFileInput" accept="video/mp4,video/webm" style="display: none;">
             </div>
         </div>
@@ -64,10 +75,9 @@
                 </p>
             </div>
 
-            <!-- NEW: Sidebar Navigation Tabs -->
             <div class="sidebar-tabs">
                 <button id="tabChatBtn" class="tab-btn active">Live Chat</button>
-                <button id="tabStudyBtn" class="tab-btn">Study Hub</button>
+                <button id="tabStudyBtn" class="tab-btn">Focus Timer</button>
             </div>
 
             <!-- Chat Section -->
@@ -87,25 +97,16 @@
                 </div>
             </div>
 
-            <!-- NEW: Study Hub Section -->
+            <!-- Study Hub Section (Now just the Timer) -->
             <div id="studySection" class="study-container" style="display: none;">
-                <div class="timer-section">
-                    <h3 style="margin-bottom: 8px;">Focus Timer</h3>
+                <div class="timer-section" style="border: none; padding: 0;">
+                    <h3 style="margin-bottom: 8px;">Pomodoro</h3>
                     <div class="timer-display" id="timerDisplay">25:00</div>
                     <div class="timer-controls">
                         <button id="startTimerBtn">Start Sync</button>
                         <button id="resetTimerBtn">Reset</button>
                     </div>
                 </div>
-                
-                <div class="board-header">
-                    <h3 style="margin-bottom: 0;">Whiteboard</h3>
-                    <div class="board-tools">
-                        <input type="color" id="colorPicker" value="#111827">
-                        <button id="clearBoardBtn">Clear</button>
-                    </div>
-                </div>
-                <canvas id="whiteboard"></canvas>
             </div>
         </div>
     </div>
