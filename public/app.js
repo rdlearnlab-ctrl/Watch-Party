@@ -564,12 +564,56 @@ function makeVideoClickable(videoElement, stream) {
 }
 
 function setMicState(enabled) {
-    if (!localStream) return; const audioTrack = localStream.getAudioTracks()[0];
-    if (audioTrack) { audioTrack.enabled = enabled; muteBtn.innerText = enabled ? "Mute Mic" : "Unmute Mic"; if (enabled) { muteBtn.classList.add('talking'); } else { muteBtn.classList.remove('talking'); } }
+    if (!localStream) return; 
+    const audioTrack = localStream.getAudioTracks()[0];
+    if (audioTrack) { 
+        audioTrack.enabled = enabled; 
+        muteBtn.innerText = enabled ? "Mute Mic" : "Unmute Mic"; 
+        
+        if (enabled) { 
+            muteBtn.classList.add('talking'); 
+        } else { 
+            muteBtn.classList.remove('talking'); 
+        }
+        
+        // Broadcast state to friends
+        if (currentRoom) {
+            socket.emit('toggle_mute', { roomId: currentRoom, peerId: myPeerId, isMuted: !enabled });
+        }
+    }
 }
 
-muteBtn.addEventListener('click', () => { if (!localStream || isPttMode) return; setMicState(!localStream.getAudioTracks()[0].enabled); });
-camToggleBtn.addEventListener('click', () => { if (!localStream) return; const videoTrack = localStream.getVideoTracks()[0]; if (videoTrack) { isCamEnabled = !isCamEnabled; videoTrack.enabled = isCamEnabled; camToggleBtn.innerText = isCamEnabled ? "Disable Cam" : "Enable Cam"; myCam.classList.toggle('video-off', !isCamEnabled); } });
+muteBtn.addEventListener('click', () => { 
+    if (!localStream || isPttMode) return; 
+    setMicState(!localStream.getAudioTracks()[0].enabled); 
+});
+
+camToggleBtn.addEventListener('click', () => { 
+    if (!localStream) return; 
+    const videoTrack = localStream.getVideoTracks()[0]; 
+    if (videoTrack) { 
+        isCamEnabled = !isCamEnabled; 
+        videoTrack.enabled = isCamEnabled; 
+        camToggleBtn.innerText = isCamEnabled ? "Disable Cam" : "Enable Cam"; 
+        myCam.classList.toggle('video-off', !isCamEnabled); 
+        
+        // Broadcast state to friends
+        if (currentRoom) {
+            socket.emit('toggle_cam', { roomId: currentRoom, peerId: myPeerId, isCamOff: !isCamEnabled });
+        }
+    } 
+});
+
+// LISTEN FOR FRIENDS' HARDWARE CHANGES
+socket.on('peer_muted', (data) => {
+    const friendVid = document.getElementById(`video-${data.peerId}`);
+    if (friendVid) friendVid.classList.toggle('peer-muted', data.isMuted);
+});
+
+socket.on('peer_cam_toggled', (data) => {
+    const friendVid = document.getElementById(`video-${data.peerId}`);
+    if (friendVid) friendVid.classList.toggle('peer-cam-off', data.isCamOff);
+});
 
 const pttToggleBtn = document.getElementById('pttToggleBtn'); const holdToTalkBtn = document.getElementById('holdToTalkBtn'); const pttHint = document.getElementById('pttHint');
 let isPttMode = false; let isSpacePressed = false;
