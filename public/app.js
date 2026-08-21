@@ -42,6 +42,7 @@ const currentUserDisplay = document.getElementById('currentUserDisplay');
 
 let appUser = null;
 let myName = "User"; 
+let isHost = false; // Tracks host privileges
 
 onAuthStateChanged(auth, (user) => {
     if (user) {
@@ -86,8 +87,6 @@ logoutBtn.addEventListener('click', () => { signOut(auth); });
 // ==========================================
 const socket = io(); 
 const video = document.getElementById('videoPlayer');
-
-// Initialize WebTorrent Client
 const wtClient = new WebTorrent();
 
 const peer = new Peer({
@@ -115,6 +114,7 @@ const joinPrivateRoomBtn = document.getElementById('joinPrivateRoomBtn');
 const publicRoomsList = document.getElementById('publicRoomsList');
 const roomDisplay = document.getElementById('roomDisplay');
 const leaveRoomBtn = document.getElementById('leaveRoomBtn');
+const hostBadge = document.getElementById('hostBadge');
 let currentRoom = null;
 
 function enterRoom(roomId, isPublic = false, isCreating = false) {
@@ -146,6 +146,20 @@ leaveRoomBtn.addEventListener('click', () => {
     window.location.reload(); 
 });
 
+// Receive host status from server
+socket.on('set_host_status', (status) => {
+    isHost = status;
+    if (isHost) {
+        hostBadge.innerText = "👑 HOST";
+        hostBadge.style.background = "#10b981";
+        hostBadge.style.color = "white";
+    } else {
+        hostBadge.innerText = "Guest";
+        hostBadge.style.background = "#fef08a";
+        hostBadge.style.color = "#111827";
+    }
+});
+
 socket.on('update_rooms', (rooms) => {
     publicRoomsList.innerHTML = '';
     if (rooms.length === 0) {
@@ -168,7 +182,7 @@ socket.on('update_rooms', (rooms) => {
 });
 
 // ==========================================
-// 2. YOUTUBE API & VIDEO SYNC LOGIC
+// 2. YOUTUBE API & VIDEO SYNC LOGIC (HOST RESTRICTED)
 // ==========================================
 let ytPlayer;
 let isYouTubeActive = false;
@@ -182,6 +196,8 @@ if (window.YT && window.YT.Player) { initYouTubePlayer(); } else { window.onYouT
 
 function onPlayerStateChange(event) {
     if (ytEmitLock || !currentRoom) return;
+    if (!isHost) return; // Only host can trigger play/pause states for the room
+    
     if (event.data == YT.PlayerState.PLAYING) {
         socket.emit('play_video', currentRoom); socket.emit('seek_video', { roomId: currentRoom, time: ytPlayer.getCurrentTime() });
     } else if (event.data == YT.PlayerState.PAUSED) {
@@ -189,9 +205,24 @@ function onPlayerStateChange(event) {
     }
 }
 
-video.addEventListener('play', () => { if (currentRoom && !isYouTubeActive) socket.emit('play_video', currentRoom); });
-video.addEventListener('pause', () => { if (currentRoom && !isYouTubeActive) socket.emit('pause_video', currentRoom); });
-video.addEventListener('seeked', () => { if (currentRoom && !isYouTubeActive) socket.emit('seek_video', { roomId: currentRoom, time: video.currentTime }); });
+video.addEventListener('play', () => { 
+    if (currentRoom && !isYouTubeActive) {
+        if (!isHost) { video.pause(); return alert("Only the host can control playback!"); }
+        socket.emit('play_video', currentRoom); 
+    }
+});
+video.addEventListener('pause', () => { 
+    if (currentRoom && !isYouTubeActive) {
+        if (!isHost) return; 
+        socket.emit('pause_video', currentRoom); 
+    }
+});
+video.addEventListener('seeked', () => { 
+    if (currentRoom && !isYouTubeActive) {
+        if (!isHost) return; 
+        socket.emit('seek_video', { roomId: currentRoom, time: video.currentTime }); 
+    }
+});
 
 socket.on('receive_play', () => { if (isYouTubeActive && ytPlayer && ytPlayer.playVideo) { ytEmitLock = true; ytPlayer.playVideo(); setTimeout(() => ytEmitLock = false, 500); } else { video.play(); } });
 socket.on('receive_pause', () => { if (isYouTubeActive && ytPlayer && ytPlayer.pauseVideo) { ytEmitLock = true; ytPlayer.pauseVideo(); setTimeout(() => ytEmitLock = false, 500); } else { video.pause(); } });
@@ -221,6 +252,7 @@ function processVideoLink(url) {
 }
 
 loadUrlBtn.addEventListener('click', () => {
+    if (!isHost) return alert("Only the host can load new videos!");
     const url = videoUrlInput.value.trim();
     if (url && currentRoom) {
         processVideoLink(url); socket.emit('change_video_url', { roomId: currentRoom, url: url, isTorrent: false }); videoUrlInput.value = ''; 
@@ -243,8 +275,12 @@ socket.on('receive_video_url', (data) => {
     }
 });
 
-// WEBTORRENT: Seed local file directly to friends
-uploadBtn.addEventListener('click', () => { localFileInput.click(); });
+// WEBTORRENT: Host seeds local file
+uploadBtn.addEventListener('click', () => {
+    if (!isHost) return alert("Only the host can stream local files!");
+    localFileInput.click();
+});
+
 localFileInput.addEventListener('change', function() {
     const file = this.files[0];
     if (file) { 
@@ -253,7 +289,6 @@ localFileInput.addEventListener('change', function() {
         uploadBtn.disabled = true;
 
         wtClient.seed(file, (torrent) => {
-            console.log('Seeding WebTorrent:', torrent.infoHash);
             torrent.files[0].renderTo(video);
             
             isYouTubeActive = false;
@@ -278,7 +313,6 @@ const studySection = document.getElementById('studySection');
 const theaterModeBtn = document.getElementById('theaterModeBtn');
 let isTheaterMode = false;
 
-// THEATER MODE TOGGLE
 theaterModeBtn.addEventListener('click', () => {
     isTheaterMode = !isTheaterMode;
     document.body.classList.toggle('theater-mode', isTheaterMode);
@@ -323,7 +357,7 @@ chatInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') { e.preve
 socket.on('receive_chat', (data) => { appendMessage(data.message, data.sender || "Friend"); });
 
 // ==========================================
-// 4. MAIN SCREEN WHITEBOARD LOGIC
+// 4. MAIN SCREEN WHITEBOARD LOGIC (HOST RESTRICTED CLEAR)
 // ==========================================
 const canvas = document.getElementById('whiteboard');
 const ctx = canvas.getContext('2d');
@@ -365,7 +399,12 @@ canvas.addEventListener('mousedown', onMouseDown); canvas.addEventListener('mous
 canvas.addEventListener('touchstart', onMouseDown, { passive: true }); canvas.addEventListener('touchend', onMouseUp, { passive: true }); canvas.addEventListener('touchcancel', onMouseUp, { passive: true }); canvas.addEventListener('touchmove', onMouseMove, { passive: true });
 
 socket.on('receive_draw_line', (data) => { drawLine(data.x0 * canvas.width, data.y0 * canvas.height, data.x1 * canvas.width, data.y1 * canvas.height, data.color, false); });
-clearBoardBtn.addEventListener('click', () => { ctx.clearRect(0, 0, canvas.width, canvas.height); if (currentRoom) socket.emit('clear_board', currentRoom); });
+
+clearBoardBtn.addEventListener('click', () => { 
+    if (!isHost) return alert("Only the host can clear the board!");
+    ctx.clearRect(0, 0, canvas.width, canvas.height); 
+    if (currentRoom) socket.emit('clear_board', currentRoom); 
+});
 socket.on('receive_clear_board', () => { ctx.clearRect(0, 0, canvas.width, canvas.height); });
 
 // ==========================================
@@ -394,8 +433,15 @@ function startSyncTimer() {
 }
 
 function pauseTimer() { clearInterval(timerInterval); isTimerRunning = false; startTimerBtn.innerText = "Start Sync"; if (currentRoom) socket.emit('sync_timer', { roomId: currentRoom, timeLeft: timeLeft, isRunning: false }); }
-startTimerBtn.addEventListener('click', () => { if (isTimerRunning) pauseTimer(); else { startSyncTimer(); if (currentRoom) socket.emit('sync_timer', { roomId: currentRoom, timeLeft: timeLeft, isRunning: true }); } });
-resetTimerBtn.addEventListener('click', () => { pauseTimer(); timeLeft = 25 * 60; updateTimerDisplay(); if (currentRoom) socket.emit('sync_timer', { roomId: currentRoom, timeLeft: timeLeft, isRunning: false }); });
+startTimerBtn.addEventListener('click', () => { 
+    if (!isHost) return alert("Only the host can control the focus timer!");
+    if (isTimerRunning) pauseTimer(); 
+    else { startSyncTimer(); if (currentRoom) socket.emit('sync_timer', { roomId: currentRoom, timeLeft: timeLeft, isRunning: true }); } 
+});
+resetTimerBtn.addEventListener('click', () => { 
+    if (!isHost) return alert("Only the host can reset the focus timer!");
+    pauseTimer(); timeLeft = 25 * 60; updateTimerDisplay(); if (currentRoom) socket.emit('sync_timer', { roomId: currentRoom, timeLeft: timeLeft, isRunning: false }); 
+});
 socket.on('receive_sync_timer', (data) => { timeLeft = data.timeLeft; updateTimerDisplay(); if (data.isRunning && !isTimerRunning) { startSyncTimer(); } else if (!data.isRunning && isTimerRunning) { clearInterval(timerInterval); isTimerRunning = false; startTimerBtn.innerText = "Start Sync"; } });
 
 // ==========================================
