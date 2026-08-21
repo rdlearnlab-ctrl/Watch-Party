@@ -5,28 +5,48 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BingePlay - Watch Party</title>
     <link rel="stylesheet" href="style.css">
+    
+    <!-- Firebase SDKs (Compat version for vanilla JS integration) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-auth-compat.js"></script>
+    
     <script src="/socket.io/socket.io.js"></script>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="https://www.youtube.com/iframe_api"></script>
 </head>
 <body>
-    <div class="main-wrapper">
+    <!-- NEW: Firebase Auth Modal -->
+    <div id="authOverlay" class="auth-overlay">
+        <div class="auth-modal">
+            <h1>BINGEPLAY LOGIN</h1>
+            <input type="email" id="emailInput" placeholder="Enter Email">
+            <input type="password" id="passwordInput" placeholder="Enter Password">
+            <div class="auth-buttons">
+                <button id="loginBtn">Log In</button>
+                <button id="signupBtn">Sign Up</button>
+            </div>
+            <p id="authError" style="color: #f43f5e; display: none; font-weight: 600; margin-top: 10px;"></p>
+        </div>
+    </div>
+
+    <div class="main-wrapper" id="mainApp" style="display: none;">
         <!-- Main Video Area -->
         <div class="video-section">
             <div class="room-header">
                 <h1>BINGEPLAY</h1>
                 <div class="room-controls">
+                    <button id="logoutBtn" style="background: #f43f5e; color: white; margin-right: 12px;">Log Out</button>
                     <input type="text" id="roomInput" placeholder="Enter Room...">
                     <button id="joinRoomBtn">Join Room</button>
                 </div>
             </div>
-            <p>Current Room: <span id="roomDisplay">None</span></p>
+            <p>Current Room: <span id="roomDisplay">None</span> | Logged in as: <span id="currentUserDisplay" style="font-weight:700;"></span></p>
             
             <div class="video-wrapper">
                 <video id="videoPlayer" controls></video>
                 <div id="ytPlayer" style="display: none;"></div>
                 
-                <!-- NEW: Main Screen Whiteboard -->
+                <!-- Main Screen Whiteboard -->
                 <div id="whiteboardContainer" style="display: none;">
                     <div class="board-floating-tools">
                         <input type="color" id="colorPicker" value="#111827">
