@@ -2,7 +2,7 @@ const socket = io();
 const video = document.getElementById('videoPlayer');
 
 // ==========================================
-// PEERJS INITIALIZATION
+// PEERJS INITIALIZATION (SECURE & STUN)
 // ==========================================
 const peer = new Peer({
     host: '0.peerjs.com',
@@ -120,7 +120,6 @@ socket.on('receive_video_url', (newUrl) => {
 });
 
 uploadBtn.addEventListener('click', () => { localFileInput.click(); });
-
 localFileInput.addEventListener('change', function() {
     const file = this.files[0];
     if (file) {
@@ -130,11 +129,12 @@ localFileInput.addEventListener('change', function() {
 });
 
 // ==========================================
-// 5 & 6. COMBINED WEBRTC & DEVICE INITIALIZATION
+// 5. WEBRTC, CAMS, & AUDIO-ONLY CONTROLS
 // ==========================================
 const videoGrid = document.getElementById('video-grid');
 const myCam = document.getElementById('myCam');
 const muteBtn = document.getElementById('muteBtn');
+const camToggleBtn = document.getElementById('camToggleBtn');
 const screenShareBtn = document.getElementById('screenShareBtn');
 const cameraSelect = document.getElementById('cameraSelect');
 const micSelect = document.getElementById('micSelect');
@@ -144,15 +144,14 @@ let activeCalls = [];
 let screenCalls = []; 
 let currentScreenStream = null; 
 let isScreenSharing = false;
+let isCamEnabled = true;
 
-// THE FIX: One single function to start hardware and fetch device names
 async function startLocalVideo() {
     try {
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         myCam.srcObject = localStream;
         makeVideoClickable(myCam, localStream);
 
-        // Fetch device names for dropdowns now that we have permission
         const devices = await navigator.mediaDevices.enumerateDevices();
         cameraSelect.innerHTML = '';
         micSelect.innerHTML = '';
@@ -170,7 +169,6 @@ async function startLocalVideo() {
             }
         });
 
-        // Setup answering calls
         peer.on('call', (call) => {
             call.answer(localStream); 
             const newFriendCam = document.createElement('video');
@@ -186,7 +184,6 @@ async function startLocalVideo() {
                 activeCalls.push(call); 
                 call.on('stream', (friendStream) => { addVideoStream(newFriendCam, friendStream); });
             }
-
             call.on('close', () => { newFriendCam.remove(); });
         });
 
@@ -195,7 +192,6 @@ async function startLocalVideo() {
     }
 }
 
-// Boot up the camera!
 startLocalVideo();
 
 socket.on('user_connected', (newPeerId) => {
@@ -239,10 +235,146 @@ function makeVideoClickable(videoElement, stream) {
     });
 }
 
-// Switching Devices
+// ------------------------------------------
+// HARDWARE CONTROLS (MIC & CAM)
+// ------------------------------------------
+function setMicState(enabled) {
+    if (!localStream) return;
+    const audioTrack = localStream.getAudioTracks()[0];
+    if (audioTrack) {
+        audioTrack.enabled = enabled;
+        muteBtn.innerText = enabled ? "Mute Mic" : "Unmute Mic";
+        if (enabled) { muteBtn.classList.add('talking'); } 
+        else { muteBtn.classList.remove('talking'); }
+    }
+}
+
+muteBtn.addEventListener('click', () => {
+    if (!localStream || isPttMode) return;
+    const audioTrack = localStream.getAudioTracks()[0];
+    setMicState(!audioTrack.enabled);
+});
+
+camToggleBtn.addEventListener('click', () => {
+    if (!localStream) return;
+    const videoTrack = localStream.getVideoTracks()[0];
+    if (videoTrack) {
+        isCamEnabled = !isCamEnabled;
+        videoTrack.enabled = isCamEnabled;
+        camToggleBtn.innerText = isCamEnabled ? "Disable Cam" : "Enable Cam";
+        myCam.classList.toggle('video-off', !isCamEnabled);
+    }
+});
+
+// ------------------------------------------
+// 6. PUSH-TO-TALK (PTT) - MOBILE & DESKTOP
+// ------------------------------------------
+const pttToggleBtn = document.getElementById('pttToggleBtn');
+const holdToTalkBtn = document.getElementById('holdToTalkBtn');
+const pttHint = document.getElementById('pttHint');
+
+let isPttMode = false;
+let isSpacePressed = false;
+
+pttToggleBtn.addEventListener('click', () => {
+    isPttMode = !isPttMode;
+    pttToggleBtn.innerText = isPttMode ? "PTT: ON" : "PTT: OFF";
+    pttToggleBtn.classList.toggle('active', isPttMode);
+    
+    holdToTalkBtn.style.display = isPttMode ? "block" : "none";
+    pttHint.style.display = isPttMode ? "block" : "none";
+
+    if (isPttMode) { setMicState(false); } 
+    else { setMicState(true); }
+});
+
+// --- Desktop Spacebar ---
+window.addEventListener('keydown', (e) => {
+    if (!isPttMode || isSpacePressed) return;
+    if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+    if (e.code === 'Space') {
+        e.preventDefault();
+        isSpacePressed = true;
+        setMicState(true);
+        holdToTalkBtn.style.background = "#10b981"; 
+        holdToTalkBtn.style.color = "white";
+    }
+});
+
+window.addEventListener('keyup', (e) => {
+    if (!isPttMode) return;
+    if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+    if (e.code === 'Space') {
+        e.preventDefault();
+        isSpacePressed = false;
+        setMicState(false);
+        holdToTalkBtn.style.background = ""; 
+        holdToTalkBtn.style.color = "";
+    }
+});
+
+// --- Mobile Touch & Mouse ---
+function startTalking(e) {
+    if (!isPttMode) return;
+    e.preventDefault(); 
+    setMicState(true);
+}
+function stopTalking(e) {
+    if (!isPttMode) return;
+    e.preventDefault();
+    setMicState(false);
+}
+
+holdToTalkBtn.addEventListener('mousedown', startTalking);
+holdToTalkBtn.addEventListener('mouseup', stopTalking);
+holdToTalkBtn.addEventListener('mouseleave', stopTalking);
+holdToTalkBtn.addEventListener('touchstart', startTalking, { passive: false });
+holdToTalkBtn.addEventListener('touchend', stopTalking, { passive: false });
+holdToTalkBtn.addEventListener('touchcancel', stopTalking, { passive: false });
+
+// ------------------------------------------
+// SCREEN SHARE & DEVICE SWITCHING
+// ------------------------------------------
+screenShareBtn.addEventListener('click', async () => {
+    if (!isScreenSharing) {
+        try {
+            currentScreenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+            activeCalls.forEach(call => {
+                const screenCall = peer.call(call.peer, currentScreenStream, { metadata: { type: 'screenshare' } });
+                screenCalls.push(screenCall);
+            });
+
+            video.removeAttribute('src'); 
+            video.srcObject = currentScreenStream;
+            video.play();
+            
+            isScreenSharing = true;
+            screenShareBtn.innerText = "Stop Sharing";
+            screenShareBtn.style.background = "#f43f5e"; 
+            screenShareBtn.style.color = "white";
+
+            if (currentRoom) socket.emit('send_chat', { roomId: currentRoom, message: "I am sharing my screen!" });
+            currentScreenStream.getVideoTracks()[0].onended = () => { stopScreenShare(); };
+        } catch (error) { console.error("Error sharing screen:", error); }
+    } else { stopScreenShare(); }
+});
+
+function stopScreenShare() {
+    if (!isScreenSharing) return;
+    if (currentScreenStream) currentScreenStream.getTracks().forEach(track => track.stop()); 
+    
+    screenCalls.forEach(call => call.close());
+    screenCalls = [];
+    currentScreenStream = null;
+    video.srcObject = null;
+    isScreenSharing = false;
+    screenShareBtn.innerText = "Share Screen";
+    screenShareBtn.style.background = ""; 
+    screenShareBtn.style.color = "";
+}
+
 async function switchDevice() {
     if (isScreenSharing) return; 
-
     const audioSource = micSelect.value;
     const videoSource = cameraSelect.value;
     const constraints = {
@@ -267,62 +399,11 @@ async function switchDevice() {
         localStream.getTracks().forEach(track => track.stop());
         localStream = newStream;
         makeVideoClickable(myCam, localStream);
-    } catch (err) {
-        console.error("Error switching devices", err);
-    }
+    } catch (err) { console.error("Error switching devices", err); }
 }
 
 cameraSelect.addEventListener('change', switchDevice);
 micSelect.addEventListener('change', switchDevice);
-
-// Mute & Screen Share Controls
-muteBtn.addEventListener('click', () => {
-    if (localStream) {
-        const audioTrack = localStream.getAudioTracks()[0];
-        audioTrack.enabled = !audioTrack.enabled;
-        muteBtn.innerText = audioTrack.enabled ? "Mute Mic" : "Unmute Mic";
-    }
-});
-
-screenShareBtn.addEventListener('click', async () => {
-    if (!isScreenSharing) {
-        try {
-            currentScreenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-            activeCalls.forEach(call => {
-                const screenCall = peer.call(call.peer, currentScreenStream, { metadata: { type: 'screenshare' } });
-                screenCalls.push(screenCall);
-            });
-
-            video.removeAttribute('src'); 
-            video.srcObject = currentScreenStream;
-            video.play();
-            
-            isScreenSharing = true;
-            screenShareBtn.innerText = "Stop Sharing";
-            screenShareBtn.style.background = "#f43f5e"; 
-            screenShareBtn.style.color = "white";
-
-            if (currentRoom) socket.emit('send_chat', { roomId: currentRoom, message: "I am sharing my screen!" });
-            currentScreenStream.getVideoTracks()[0].onended = () => { stopScreenShare(); };
-        } catch (error) { console.error("Error sharing screen:", error); }
-    } else {
-        stopScreenShare();
-    }
-});
-
-function stopScreenShare() {
-    if (!isScreenSharing) return;
-    if (currentScreenStream) currentScreenStream.getTracks().forEach(track => track.stop()); 
-    
-    screenCalls.forEach(call => call.close());
-    screenCalls = [];
-    currentScreenStream = null;
-    video.srcObject = null;
-    isScreenSharing = false;
-    screenShareBtn.innerText = "Share Screen";
-    screenShareBtn.style.background = ""; 
-    screenShareBtn.style.color = "";
-}
 
 // ==========================================
 // 7. FLOATING REACTIONS LOGIC
@@ -338,7 +419,6 @@ if (reactionBtns.length > 0 && reactionContainer) {
             if (currentRoom) socket.emit('send_reaction', { roomId: currentRoom, emoji: emoji });
         });
     });
-
     socket.on('receive_reaction', (emoji) => { showReaction(emoji); });
 }
 
