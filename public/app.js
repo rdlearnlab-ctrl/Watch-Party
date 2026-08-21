@@ -2,12 +2,20 @@ const socket = io();
 const video = document.getElementById('videoPlayer');
 
 // ==========================================
-// PEERJS INITIALIZATION (SECURE & FALLBACK)
+// PEERJS INITIALIZATION (SECURE + STUN SERVERS)
 // ==========================================
 const peer = new Peer({
     host: '0.peerjs.com',
     port: 443,
-    secure: true
+    secure: true,
+    config: {
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' }
+        ]
+    }
 }); 
 let myPeerId = null;
 
@@ -301,6 +309,9 @@ function stopScreenShare() {
 // ==========================================
 // 6. DEVICE SELECTION LOGIC
 // ==========================================
+const cameraSelect = document.getElementById('cameraSelect');
+const micSelect = document.getElementById('micSelect');
+
 async function getDevices() {
     try {
         const devices = await navigator.mediaDevices.enumerateDevices();
@@ -367,3 +378,48 @@ navigator.mediaDevices.getUserMedia({ video: true, audio: true })
         getDevices();
     })
     .catch(() => {});
+
+// ==========================================
+// 7. FLOATING REACTIONS LOGIC
+// ==========================================
+const reactionBtns = document.querySelectorAll('.reaction-btn');
+const reactionContainer = document.getElementById('reaction-container');
+
+if (reactionBtns.length > 0 && reactionContainer) {
+    reactionBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const emoji = btn.getAttribute('data-emoji');
+            
+            // Show it on our own screen instantly
+            showReaction(emoji);
+
+            // Send it to friends if we are in a room
+            if (currentRoom) {
+                socket.emit('send_reaction', { roomId: currentRoom, emoji: emoji });
+            }
+        });
+    });
+
+    socket.on('receive_reaction', (emoji) => {
+        showReaction(emoji);
+    });
+}
+
+function showReaction(emoji) {
+    if (!reactionContainer) return;
+    
+    const el = document.createElement('div');
+    el.classList.add('floating-emoji');
+    el.innerText = emoji;
+    
+    // Pick a random spot along the bottom 80% of the video width
+    const randomX = Math.floor(Math.random() * 80) + 10; 
+    el.style.left = `${randomX}%`;
+    
+    reactionContainer.appendChild(el);
+    
+    // Clean up the DOM after the animation finishes (2.5 seconds)
+    setTimeout(() => {
+        el.remove();
+    }, 2500);
+}
