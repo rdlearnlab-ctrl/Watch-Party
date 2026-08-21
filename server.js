@@ -2,6 +2,7 @@ const express = require('express');
 const app = express();
 const http = require('http').createServer(app);
 const io = require('socket.io')(http);
+const https = require('https'); // Native module to make secure API requests
 
 app.use(express.static('public'));
 
@@ -20,6 +21,31 @@ function getPublicRooms() {
     }
     return publicRooms;
 }
+
+// ==========================================
+// SECURE TURN CREDENTIAL GENERATOR
+// ==========================================
+app.get('/api/ice-servers', (req, res) => {
+    // We call your specific Metered domain and pass the secret key securely from the backend!
+    const meteredUrl = 'https://bingeplay.metered.live/api/v1/turn/credentials?apiKey=RsSdZsHkfCreATXxhTdjy7rO50tIRO5x0mytCDELpn5g3UGN';
+    
+    https.get(meteredUrl, (apiRes) => {
+        let data = '';
+        apiRes.on('data', (chunk) => { data += chunk; });
+        apiRes.on('end', () => {
+            try {
+                const iceServers = JSON.parse(data);
+                res.json(iceServers); // Send the safe credentials to the frontend
+            } catch (e) {
+                // If the API fails, fallback to basic Google STUN servers
+                res.json([{ urls: 'stun:stun.l.google.com:19302' }]);
+            }
+        });
+    }).on('error', (err) => {
+        console.error("Error fetching ICE servers from Metered:", err);
+        res.json([{ urls: 'stun:stun.l.google.com:19302' }]);
+    });
+});
 
 io.on('connection', (socket) => {
     socket.emit('update_rooms', getPublicRooms());
