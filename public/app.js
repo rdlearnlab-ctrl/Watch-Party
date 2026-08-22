@@ -52,7 +52,7 @@ let myName = "User";
 let globalRooms = [];
 
 // ==========================================
-// SOUNDBOARD SETUP
+// SOUNDBOARD SETUP (LOCAL FILES)
 // ==========================================
 const sounds = {
     'ding': new Audio('./soundeffects/ding-sound-effect_2.mp3'),
@@ -69,10 +69,12 @@ sounds['omg'].volume = 0.5;
 sounds['fahhh'].volume = 0.5;
 
 function playSound(soundId) {
-    const audio = sounds[soundId];
-    if (audio) {
-        audio.currentTime = 0; 
-        audio.play().catch(() => {}); 
+    const originalAudio = sounds[soundId];
+    if (originalAudio) {
+        // Clone node so rapid clicking won't interrupt ongoing sound buffers
+        const soundClone = originalAudio.cloneNode();
+        soundClone.volume = originalAudio.volume;
+        soundClone.play().catch(() => {}); 
     }
 }
 
@@ -167,7 +169,6 @@ const wtClient = new WebTorrent();
 let peer = null; 
 let myPeerId = null;
 
-// SECURELY FETCH TURN CREDENTIALS FROM BACKEND
 async function initializeWebRTC() {
     try {
         const response = await fetch('/api/ice-servers');
@@ -207,7 +208,7 @@ const leaveRoomBtn = document.getElementById('leaveRoomBtn');
 let currentRoom = null;
 
 function enterRoom(roomId, isPublic = false, category = 'Movie Night', isCreating = false) {
-    if (!myPeerId || !peer) return alert("Waiting for secure connection servers... try again in a second.");
+    if (!myPeerId || !peer) return alert("Waiting for connection servers... try again in a moment.");
     currentRoom = roomId;
     roomDisplay.innerText = currentRoom;
     
@@ -267,33 +268,93 @@ function renderRoomList() {
 }
 
 // ==========================================
-// 2. YOUTUBE API & VIDEO SYNC LOGIC
+// 2. VIDEO SYNC LOGIC (WEBTORRENT, HTML5, YOUTUBE)
 // ==========================================
 let ytPlayer;
 let isYouTubeActive = false;
 let ytEmitLock = false;
+let isRemoteAction = false; // Prevents recursive sync feedback loops
 
 function initYouTubePlayer() {
-    ytPlayer = new YT.Player('ytPlayer', { height: '100%', width: '100%', videoId: '', events: { 'onStateChange': onPlayerStateChange } });
+    ytPlayer = new YT.Player('ytPlayer', { 
+        height: '100%', 
+        width: '100%', 
+        videoId: '', 
+        events: { 'onStateChange': onPlayerStateChange } 
+    });
 }
 if (window.YT && window.YT.Player) { initYouTubePlayer(); } else { window.onYouTubeIframeAPIReady = initYouTubePlayer; }
 
 function onPlayerStateChange(event) {
     if (ytEmitLock || !currentRoom) return;
     if (event.data == YT.PlayerState.PLAYING) {
-        socket.emit('play_video', currentRoom); socket.emit('seek_video', { roomId: currentRoom, time: ytPlayer.getCurrentTime() });
+        socket.emit('play_video', currentRoom); 
+        socket.emit('seek_video', { roomId: currentRoom, time: ytPlayer.getCurrentTime() });
     } else if (event.data == YT.PlayerState.PAUSED) {
         socket.emit('pause_video', currentRoom);
     }
 }
 
-video.addEventListener('play', () => { if (currentRoom && !isYouTubeActive) { socket.emit('play_video', currentRoom); } });
-video.addEventListener('pause', () => { if (currentRoom && !isYouTubeActive) { socket.emit('pause_video', currentRoom); } });
-video.addEventListener('seeked', () => { if (currentRoom && !isYouTubeActive) { socket.emit('seek_video', { roomId: currentRoom, time: video.currentTime }); } });
+// Native Video Listeners (Broadcasting local play, pause, seek)
+video.addEventListener('play', () => { 
+    if (!isRemoteAction && currentRoom && !isYouTubeActive) {
+        socket.emit('play_video', currentRoom); 
+    } 
+});
 
-socket.on('receive_play', () => { if (isYouTubeActive && ytPlayer && ytPlayer.playVideo) { ytEmitLock = true; ytPlayer.playVideo(); setTimeout(() => ytEmitLock = false, 500); } else { video.play(); } });
-socket.on('receive_pause', () => { if (isYouTubeActive && ytPlayer && ytPlayer.pauseVideo) { ytEmitLock = true; ytPlayer.pauseVideo(); setTimeout(() => ytEmitLock = false, 500); } else { video.pause(); } });
-socket.on('receive_seek', (time) => { if (isYouTubeActive && ytPlayer && ytPlayer.seekTo) { if (Math.abs(ytPlayer.getCurrentTime() - time) > 2) { ytEmitLock = true; ytPlayer.seekTo(time, true); setTimeout(() => ytEmitLock = false, 500); } } else { if (Math.abs(video.currentTime - time) > 1) video.currentTime = time; } });
+video.addEventListener('pause', () => { 
+    if (!isRemoteAction && currentRoom && !isYouTubeActive) {
+        socket.emit('pause_video', currentRoom); 
+    } 
+});
+
+video.addEventListener('seeked', () => { 
+    if (!isRemoteAction && currentRoom && !isYouTubeActive) {
+        socket.emit('seek_video', { roomId: currentRoom, time: video.currentTime }); 
+    } 
+});
+
+// Receiving Sync Commands From Other Users
+socket.on('receive_play', () => { 
+    if (isYouTubeActive && ytPlayer && ytPlayer.playVideo) { 
+        ytEmitLock = true; 
+        ytPlayer.playVideo(); 
+        setTimeout(() => ytEmitLock = false, 600); 
+    } else { 
+        isRemoteAction = true;
+        video.play().catch(() => {}).finally(() => {
+            setTimeout(() => { isRemoteAction = false; }, 400);
+        });
+    } 
+});
+
+socket.on('receive_pause', () => { 
+    if (isYouTubeActive && ytPlayer && ytPlayer.pauseVideo) { 
+        ytEmitLock = true; 
+        ytPlayer.pauseVideo(); 
+        setTimeout(() => ytEmitLock = false, 600); 
+    } else { 
+        isRemoteAction = true;
+        video.pause();
+        setTimeout(() => { isRemoteAction = false; }, 400);
+    } 
+});
+
+socket.on('receive_seek', (time) => { 
+    if (isYouTubeActive && ytPlayer && ytPlayer.seekTo) { 
+        if (Math.abs(ytPlayer.getCurrentTime() - time) > 1.5) { 
+            ytEmitLock = true; 
+            ytPlayer.seekTo(time, true); 
+            setTimeout(() => ytEmitLock = false, 600); 
+        } 
+    } else { 
+        if (Math.abs(video.currentTime - time) > 1.5) { 
+            isRemoteAction = true;
+            video.currentTime = time; 
+            setTimeout(() => { isRemoteAction = false; }, 400);
+        } 
+    } 
+});
 
 const videoUrlInput = document.getElementById('videoUrlInput');
 const loadUrlBtn = document.getElementById('loadUrlBtn');
@@ -309,47 +370,72 @@ function processVideoLink(url) {
     const ytId = parseYouTubeId(url);
     if (ytId) {
         isYouTubeActive = true;
-        if (!isBoardOpen) { document.getElementById('videoPlayer').style.display = 'none'; document.getElementById('ytPlayer').style.display = 'block'; }
-        if (ytPlayer && ytPlayer.loadVideoById) { ytEmitLock = true; ytPlayer.loadVideoById(ytId); setTimeout(() => ytEmitLock = false, 500); }
+        if (!isBoardOpen) { 
+            document.getElementById('videoPlayer').style.display = 'none'; 
+            document.getElementById('ytPlayer').style.display = 'block'; 
+        }
+        if (ytPlayer && ytPlayer.loadVideoById) { 
+            ytEmitLock = true; 
+            ytPlayer.loadVideoById(ytId); 
+            setTimeout(() => ytEmitLock = false, 600); 
+        }
     } else {
         isYouTubeActive = false;
-        if (!isBoardOpen) { document.getElementById('ytPlayer').style.display = 'none'; document.getElementById('videoPlayer').style.display = 'block'; }
+        if (!isBoardOpen) { 
+            document.getElementById('ytPlayer').style.display = 'none'; 
+            document.getElementById('videoPlayer').style.display = 'block'; 
+        }
         video.src = url;
     }
 }
 
 loadUrlBtn.addEventListener('click', () => {
     const url = videoUrlInput.value.trim();
-    if (url && currentRoom) { processVideoLink(url); socket.emit('change_video_url', { roomId: currentRoom, url: url, isTorrent: false }); videoUrlInput.value = ''; }
+    if (url && currentRoom) { 
+        processVideoLink(url); 
+        socket.emit('change_video_url', { roomId: currentRoom, url: url, isTorrent: false }); 
+        videoUrlInput.value = ''; 
+    }
 });
 
 socket.on('receive_video_url', (data) => { 
     if (data.isTorrent) {
-        appendMessage("Someone started a local movie stream! Buffering...", "System");
+        appendMessage("Host started a local P2P stream! Downloading & buffering...", "System");
         wtClient.add(data.url, (torrent) => {
             const file = torrent.files.find(f => f.name.endsWith('.mp4') || f.name.endsWith('.webm') || f.name.endsWith('.mkv')) || torrent.files[0];
             file.renderTo(video);
             isYouTubeActive = false;
-            if (!isBoardOpen) { document.getElementById('ytPlayer').style.display = 'none'; document.getElementById('videoPlayer').style.display = 'block'; }
+            if (!isBoardOpen) { 
+                document.getElementById('ytPlayer').style.display = 'none'; 
+                document.getElementById('videoPlayer').style.display = 'block'; 
+            }
         });
     } else {
-        processVideoLink(data.url); appendMessage("Someone changed the video!", "System"); 
+        processVideoLink(data.url); 
+        appendMessage("Video changed by room member.", "System"); 
     }
 });
 
+// WebTorrent Local Streaming (Host Seed)
 uploadBtn.addEventListener('click', () => { localFileInput.click(); });
 localFileInput.addEventListener('change', function() {
     const file = this.files[0];
     if (file) { 
-        if (!currentRoom) return alert("Please join a room first!");
-        uploadBtn.innerText = "Seeding..."; uploadBtn.disabled = true;
+        if (!currentRoom) return alert("Please join or create a room first!");
+        uploadBtn.innerText = "Seeding..."; 
+        uploadBtn.disabled = true;
+        
         wtClient.seed(file, (torrent) => {
             torrent.files[0].renderTo(video);
             isYouTubeActive = false;
-            if (!isBoardOpen) { document.getElementById('ytPlayer').style.display = 'none'; document.getElementById('videoPlayer').style.display = 'block'; }
+            if (!isBoardOpen) { 
+                document.getElementById('ytPlayer').style.display = 'none'; 
+                document.getElementById('videoPlayer').style.display = 'block'; 
+            }
             socket.emit('change_video_url', { roomId: currentRoom, url: torrent.magnetURI, isTorrent: true });
-            socket.emit('send_chat', { roomId: currentRoom, message: "Started streaming a local movie via WebTorrent!", sender: "System" });
-            uploadBtn.innerText = "Play Local"; uploadBtn.disabled = false;
+            socket.emit('send_chat', { roomId: currentRoom, message: "Started streaming a local movie via WebTorrent P2P!", sender: "System" });
+            uploadBtn.innerText = "Stream Local P2P"; 
+            uploadBtn.disabled = false;
         });
     }
 });
@@ -372,8 +458,19 @@ theaterModeBtn.addEventListener('click', () => {
     theaterModeBtn.style.color = isTheaterMode ? "#111827" : "white";
 });
 
-tabChatBtn.addEventListener('click', () => { tabChatBtn.classList.add('active'); tabStudyBtn.classList.remove('active'); chatSection.style.display = 'flex'; studySection.style.display = 'none'; });
-tabStudyBtn.addEventListener('click', () => { tabStudyBtn.classList.add('active'); tabChatBtn.classList.remove('active'); studySection.style.display = 'flex'; chatSection.style.display = 'none'; });
+tabChatBtn.addEventListener('click', () => { 
+    tabChatBtn.classList.add('active'); 
+    tabStudyBtn.classList.remove('active'); 
+    chatSection.style.display = 'flex'; 
+    studySection.style.display = 'none'; 
+});
+
+tabStudyBtn.addEventListener('click', () => { 
+    tabStudyBtn.classList.add('active'); 
+    tabChatBtn.classList.remove('active'); 
+    studySection.style.display = 'flex'; 
+    chatSection.style.display = 'none'; 
+});
 
 const chatInput = document.getElementById('chatInput');
 const sendChatBtn = document.getElementById('sendChatBtn');
@@ -412,7 +509,7 @@ document.getElementById('icebreakerBtn').addEventListener('click', () => {
     if (currentRoom) socket.emit('send_chat', { roomId: currentRoom, message: fullMsg, sender: "System" });
 });
 
-// SOUNDBOARD LISTENERS
+// SOUNDBOARD CLICK LISTENERS
 const soundBtns = document.querySelectorAll('.sound-btn');
 soundBtns.forEach(btn => {
     btn.addEventListener('click', () => {
@@ -445,19 +542,42 @@ window.addEventListener('resize', resizeCanvas);
 
 function toggleBoardUI(isOpen) {
     if (isOpen) {
-        whiteboardContainer.style.display = 'block'; openBoardBtn.innerText = "Close Whiteboard"; openBoardBtn.style.background = "#f43f5e"; openBoardBtn.style.color = "white";
-        document.getElementById('videoPlayer').style.display = 'none'; document.getElementById('ytPlayer').style.display = 'none'; setTimeout(resizeCanvas, 50);
+        whiteboardContainer.style.display = 'block'; 
+        openBoardBtn.innerText = "Close Whiteboard"; 
+        openBoardBtn.style.background = "#f43f5e"; 
+        openBoardBtn.style.color = "white";
+        document.getElementById('videoPlayer').style.display = 'none'; 
+        document.getElementById('ytPlayer').style.display = 'none'; 
+        setTimeout(resizeCanvas, 50);
     } else {
-        whiteboardContainer.style.display = 'none'; openBoardBtn.innerText = "Open Whiteboard"; openBoardBtn.style.background = "#a78bfa"; openBoardBtn.style.color = "#111827";
-        if (isYouTubeActive) { document.getElementById('ytPlayer').style.display = 'block'; } else { document.getElementById('videoPlayer').style.display = 'block'; }
+        whiteboardContainer.style.display = 'none'; 
+        openBoardBtn.innerText = "Open Whiteboard"; 
+        openBoardBtn.style.background = "#a78bfa"; 
+        openBoardBtn.style.color = "#111827";
+        if (isYouTubeActive) { 
+            document.getElementById('ytPlayer').style.display = 'block'; 
+        } else { 
+            document.getElementById('videoPlayer').style.display = 'block'; 
+        }
     }
 }
 
-openBoardBtn.addEventListener('click', () => { isBoardOpen = !isBoardOpen; toggleBoardUI(isBoardOpen); if (currentRoom) socket.emit('toggle_board', { roomId: currentRoom, isOpen: isBoardOpen }); });
+openBoardBtn.addEventListener('click', () => { 
+    isBoardOpen = !isBoardOpen; 
+    toggleBoardUI(isBoardOpen); 
+    if (currentRoom) socket.emit('toggle_board', { roomId: currentRoom, isOpen: isBoardOpen }); 
+});
 socket.on('receive_toggle_board', (isOpen) => { isBoardOpen = isOpen; toggleBoardUI(isBoardOpen); });
 
 function drawLine(x0, y0, x1, y1, color, emit) {
-    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.strokeStyle = color; ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.stroke(); ctx.closePath();
+    ctx.beginPath(); 
+    ctx.moveTo(x0, y0); 
+    ctx.lineTo(x1, y1); 
+    ctx.strokeStyle = color; 
+    ctx.lineWidth = 4; 
+    ctx.lineCap = 'round'; 
+    ctx.stroke(); 
+    ctx.closePath();
     if (!emit || !currentRoom) return;
     socket.emit('draw_line', { roomId: currentRoom, x0: x0 / canvas.width, y0: y0 / canvas.height, x1: x1 / canvas.width, y1: y1 / canvas.height, color: color });
 }
@@ -498,7 +618,7 @@ resetTimerBtn.addEventListener('click', () => { pauseTimer(); timeLeft = 25 * 60
 socket.on('receive_sync_timer', (data) => { timeLeft = data.timeLeft; updateTimerDisplay(); if (data.isRunning && !isTimerRunning) { startSyncTimer(); } else if (!data.isRunning && isTimerRunning) { clearInterval(timerInterval); isTimerRunning = false; startTimerBtn.innerText = "Start Sync"; } });
 
 // ==========================================
-// 6. WEBRTC & HARDWARE CONTROLS
+// 6. WEBRTC & HARDWARE CONTROLS (ROBUST AUDIO)
 // ==========================================
 const videoGrid = document.getElementById('video-grid');
 const myCam = document.getElementById('myCam');
@@ -518,7 +638,15 @@ async function startLocalVideo() {
     if (localStream) return localStream; 
 
     try {
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        localStream = await navigator.mediaDevices.getUserMedia({ 
+            video: true, 
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+                sampleRate: 48000
+            } 
+        });
         myCam.srcObject = localStream;
         makeVideoClickable(myCam, localStream);
 
@@ -580,7 +708,6 @@ function connectToNewUser(peerId, stream) {
 
 function addVideoStream(videoElement, stream) {
     videoElement.srcObject = stream; videoElement.autoplay = true; videoElement.playsInline = true; makeVideoClickable(videoElement, stream);
-    
     const existing = document.getElementById(videoElement.id);
     if (!existing) videoGrid.append(videoElement);
 }
