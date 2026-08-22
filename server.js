@@ -3,8 +3,18 @@ const app = express();
 const http = require('http').createServer(app);
 const io = require('socket.io')(http);
 const https = require('https');
+const { ExpressPeerServer } = require('peer');
 
 app.use(express.static('public'));
+
+// ==========================================
+// EMBEDDED PRIVATE PEERJS SIGNALING SERVER
+// ==========================================
+const peerServer = ExpressPeerServer(http, {
+    debug: true,
+    path: '/myapp'
+});
+app.use('/peerjs', peerServer);
 
 const activeRooms = {}; 
 
@@ -45,6 +55,9 @@ app.get('/api/ice-servers', (req, res) => {
     });
 });
 
+// ==========================================
+// SOCKET.IO SIGNALING & SYNC LOGIC
+// ==========================================
 io.on('connection', (socket) => {
     socket.emit('update_rooms', getPublicRooms());
 
@@ -53,7 +66,7 @@ io.on('connection', (socket) => {
             activeRooms[data.roomId] = { 
                 isPublic: data.isPublic, 
                 users: 0, 
-                category: data.category || 'Movie Night'
+                category: data.category || 'Movie Night' 
             };
         }
         io.emit('update_rooms', getPublicRooms());
@@ -82,7 +95,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Video Sync (Play, Pause, Seek, URL)
+    // Video Sync
     socket.on('play_video', (roomId) => socket.to(roomId).emit('receive_play'));
     socket.on('pause_video', (roomId) => socket.to(roomId).emit('receive_pause'));
     socket.on('seek_video', (data) => socket.to(data.roomId).emit('receive_seek', data.time));
@@ -91,17 +104,15 @@ io.on('connection', (socket) => {
     // Chat & Reactions
     socket.on('send_chat', (data) => socket.to(data.roomId).emit('receive_chat', data));
     socket.on('send_reaction', (data) => socket.to(data.roomId).emit('receive_reaction', data.emoji));
-
-    // Soundboard
     socket.on('play_sound', (data) => socket.to(data.roomId).emit('receive_sound', data.soundId));
 
-    // Study Hub (Whiteboard & Timer)
+    // Whiteboard & Timer
     socket.on('draw_line', (data) => socket.to(data.roomId).emit('receive_draw_line', data));
     socket.on('clear_board', (roomId) => socket.to(roomId).emit('receive_clear_board'));
     socket.on('sync_timer', (data) => socket.to(data.roomId).emit('receive_sync_timer', data));
     socket.on('toggle_board', (data) => socket.to(data.roomId).emit('receive_toggle_board', data.isOpen));
 
-    // Hardware Sync (Mute / Cam Toggles)
+    // Hardware
     socket.on('toggle_mute', (data) => socket.to(data.roomId).emit('peer_muted', data));
     socket.on('toggle_cam', (data) => socket.to(data.roomId).emit('peer_cam_toggled', data));
 });
