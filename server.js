@@ -2,7 +2,7 @@ const express = require('express');
 const app = express();
 const http = require('http').createServer(app);
 const io = require('socket.io')(http);
-const https = require('https'); // Native module to make secure API requests
+const https = require('https');
 
 app.use(express.static('public'));
 
@@ -23,10 +23,9 @@ function getPublicRooms() {
 }
 
 // ==========================================
-// SECURE TURN CREDENTIAL GENERATOR
+// SECURE TURN CREDENTIAL GENERATOR (METERED)
 // ==========================================
 app.get('/api/ice-servers', (req, res) => {
-    // We call your specific Metered domain and pass the secret key securely from the backend!
     const meteredUrl = 'https://bingeplay.metered.live/api/v1/turn/credentials?apiKey=RsSdZsHkfCreATXxhTdjy7rO50tIRO5x0mytCDELpn5g3UGN';
     
     https.get(meteredUrl, (apiRes) => {
@@ -35,9 +34,8 @@ app.get('/api/ice-servers', (req, res) => {
         apiRes.on('end', () => {
             try {
                 const iceServers = JSON.parse(data);
-                res.json(iceServers); // Send the safe credentials to the frontend
+                res.json(iceServers);
             } catch (e) {
-                // If the API fails, fallback to basic Google STUN servers
                 res.json([{ urls: 'stun:stun.l.google.com:19302' }]);
             }
         });
@@ -84,7 +82,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Video Sync
+    // Video Sync (Play, Pause, Seek, URL)
     socket.on('play_video', (roomId) => socket.to(roomId).emit('receive_play'));
     socket.on('pause_video', (roomId) => socket.to(roomId).emit('receive_pause'));
     socket.on('seek_video', (data) => socket.to(data.roomId).emit('receive_seek', data.time));
