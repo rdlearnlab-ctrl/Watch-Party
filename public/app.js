@@ -95,7 +95,7 @@ function appendMessage(msg, sender) {
 }
 
 function logDebug(msg) {
-    console.log("[WebRTC Debug]", msg);
+    console.log("[Debug]", msg);
     appendMessage(msg, "🛠️ WebRTC System");
 }
 
@@ -187,6 +187,12 @@ const socket = io();
 const video = document.getElementById('videoPlayer');
 const wtClient = new WebTorrent();
 
+// Add WebTorrent Error Logging
+wtClient.on('error', function (err) {
+    console.error('WebTorrent Error:', err);
+    logDebug("❌ WebTorrent Error: " + err.message);
+});
+
 let peer = null; 
 let myPeerId = null;
 
@@ -197,7 +203,6 @@ async function initializeWebRTC() {
         
         const iceServers = await response.json();
 
-        // Connect to your embedded private PeerJS signaling server
         peer = new Peer(undefined, {
             host: window.location.hostname,
             port: window.location.port || (window.location.protocol === 'https:' ? 443 : 80),
@@ -372,6 +377,7 @@ function parseYouTubeId(url) {
 }
 
 function processVideoLink(url) {
+    video.srcObject = null; // Clear stream locks
     const ytId = parseYouTubeId(url);
     if (ytId) {
         isYouTubeActive = true;
@@ -392,9 +398,15 @@ loadUrlBtn.addEventListener('click', () => {
 socket.on('receive_video_url', (data) => { 
     if (data.isTorrent) {
         appendMessage("Host started a local P2P stream! Downloading & buffering...", "System");
+        logDebug("WebTorrent: Receiving magnet URI from Host...");
         wtClient.add(data.url, (torrent) => {
+            logDebug("WebTorrent: Connected to swarm. Buffering video...");
             const file = torrent.files.find(f => f.name.endsWith('.mp4') || f.name.endsWith('.webm') || f.name.endsWith('.mkv')) || torrent.files[0];
+            
+            video.src = ""; // Clear existing video source
+            video.srcObject = null; // Clear existing stream objects
             file.renderTo(video);
+            
             isYouTubeActive = false;
             if (!isBoardOpen) { document.getElementById('ytPlayer').style.display = 'none'; document.getElementById('videoPlayer').style.display = 'block'; }
         });
@@ -409,12 +421,21 @@ localFileInput.addEventListener('change', function() {
     if (file) { 
         if (!currentRoom) return alert("Please join or create a room first!");
         uploadBtn.innerText = "Seeding..."; uploadBtn.disabled = true;
+        logDebug("WebTorrent: Preparing local file to seed...");
+        
         wtClient.seed(file, (torrent) => {
+            logDebug("WebTorrent: File seeded successfully! Playing locally...");
+            
+            video.src = ""; // Clear existing video source
+            video.srcObject = null; // Clear existing stream objects
             torrent.files[0].renderTo(video);
+            
             isYouTubeActive = false;
             if (!isBoardOpen) { document.getElementById('ytPlayer').style.display = 'none'; document.getElementById('videoPlayer').style.display = 'block'; }
+            
             socket.emit('change_video_url', { roomId: currentRoom, url: torrent.magnetURI, isTorrent: true });
             socket.emit('send_chat', { roomId: currentRoom, message: "Started streaming a local movie via WebTorrent P2P!", sender: "System" });
+            
             uploadBtn.innerText = "Stream Local P2P"; uploadBtn.disabled = false;
         });
     }
@@ -597,7 +618,10 @@ async function startLocalVideo() {
                 if (call.metadata && call.metadata.type === 'screenshare') {
                     isBoardOpen = false; toggleBoardUI(false); isYouTubeActive = false;
                     document.getElementById('ytPlayer').style.display = 'none'; document.getElementById('videoPlayer').style.display = 'block';
-                    video.removeAttribute('src'); video.srcObject = friendStream; video.play();
+                    
+                    video.src = ""; // Clear existing video source
+                    video.srcObject = friendStream; 
+                    video.play();
                 } else { 
                     addVideoStream(friendVideo, friendStream); 
                 }
@@ -668,7 +692,9 @@ function makeVideoClickable(videoElement, stream) {
     videoElement.addEventListener('click', () => {
         isBoardOpen = false; toggleBoardUI(false); isYouTubeActive = false;
         document.getElementById('ytPlayer').style.display = 'none'; document.getElementById('videoPlayer').style.display = 'block';
-        video.removeAttribute('src'); video.srcObject = stream; video.play();
+        video.src = "";
+        video.srcObject = stream; 
+        video.play();
     });
 }
 
@@ -721,7 +747,9 @@ screenShareBtn.addEventListener('click', async () => {
             currentScreenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
             Object.values(peers).forEach(call => { peer.call(call.peer, currentScreenStream, { metadata: { type: 'screenshare' } }); });
             isBoardOpen = false; toggleBoardUI(false); isYouTubeActive = false; document.getElementById('ytPlayer').style.display = 'none'; document.getElementById('videoPlayer').style.display = 'block';
-            video.removeAttribute('src'); video.srcObject = currentScreenStream; video.play();
+            video.src = "";
+            video.srcObject = currentScreenStream; 
+            video.play();
             isScreenSharing = true; screenShareBtn.innerText = "Stop Sharing"; screenShareBtn.style.background = "#f43f5e"; screenShareBtn.style.color = "white";
             if (currentRoom) socket.emit('send_chat', { roomId: currentRoom, message: "I am sharing my screen!", sender: myName });
             currentScreenStream.getVideoTracks()[0].onended = () => { stopScreenShare(); };
