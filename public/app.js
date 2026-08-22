@@ -207,19 +207,23 @@ const roomDisplay = document.getElementById('roomDisplay');
 const leaveRoomBtn = document.getElementById('leaveRoomBtn');
 let currentRoom = null;
 
-function enterRoom(roomId, isPublic = false, category = 'Movie Night', isCreating = false) {
+// THE FIX: Added async/await so the camera starts before we join the room!
+async function enterRoom(roomId, isPublic = false, category = 'Movie Night', isCreating = false) {
     if (!myPeerId || !peer) return alert("Waiting for connection servers... try again in a moment.");
     currentRoom = roomId;
     roomDisplay.innerText = currentRoom;
+    
+    // Switch the UI to the room immediately
+    lobbySection.style.display = 'none';
+    roomSection.style.display = 'flex';
+    
+    // Wait for the camera to spin up fully before continuing
+    await startLocalVideo(); 
     
     if (isCreating) {
         socket.emit('create_room', { roomId, isPublic, category });
     }
     socket.emit('join_room', { roomId, peerId: myPeerId });
-    
-    lobbySection.style.display = 'none';
-    roomSection.style.display = 'flex';
-    startLocalVideo(); 
 }
 
 createRoomBtn.addEventListener('click', () => {
