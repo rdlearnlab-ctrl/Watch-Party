@@ -71,11 +71,33 @@ sounds['fahhh'].volume = 0.5;
 function playSound(soundId) {
     const originalAudio = sounds[soundId];
     if (originalAudio) {
-        // Clone node so rapid clicking won't interrupt ongoing sound buffers
         const soundClone = originalAudio.cloneNode();
         soundClone.volume = originalAudio.volume;
         soundClone.play().catch(() => {}); 
     }
+}
+
+// Chat UI Helper (Moved up so WebRTC can use it for debugging)
+const chatBox = document.getElementById('chatBox');
+function appendMessage(msg, sender) {
+    const msgElement = document.createElement('div');
+    msgElement.classList.add('chat-message');
+    msgElement.classList.add(sender === "You" || sender === "System" || sender === "🛠️ WebRTC System" ? 'self' : 'other');
+    
+    // Style the debug messages slightly differently
+    if (sender === "🛠️ WebRTC System") {
+        msgElement.style.background = "#fef08a";
+        msgElement.style.color = "#111827";
+    }
+    
+    msgElement.innerHTML = `<strong>${sender}:</strong> ${msg}`;
+    chatBox.appendChild(msgElement);
+    chatBox.scrollTop = chatBox.scrollHeight; 
+}
+
+function logDebug(msg) {
+    console.log("[WebRTC Debug]", msg);
+    appendMessage(msg, "🛠️ WebRTC System");
 }
 
 onAuthStateChanged(auth, async (user) => {
@@ -172,22 +194,32 @@ let myPeerId = null;
 async function initializeWebRTC() {
     try {
         const response = await fetch('/api/ice-servers');
+        if (!response.ok) throw new Error("Backend route returned an error");
+        
         const iceServers = await response.json();
+        console.log("Using ICE Servers:", iceServers);
 
         peer = new Peer({
             secure: true,
             config: {
                 iceServers: iceServers
-            }
+            },
+            debug: 2 // Enables PeerJS console logs
         }); 
 
-        peer.on('open', (id) => { myPeerId = id; });
+        peer.on('open', (id) => { 
+            myPeerId = id; 
+            console.log("PeerJS Connected with ID:", id);
+        });
+        
         peer.on('error', (err) => { 
-            console.error("PeerJS Error:", err);
-            if (!myPeerId) myPeerId = "fallback-id-" + Math.random().toString(36).substring(7); 
+            console.error("PeerJS Critical Error:", err);
+            // We can't use logDebug here because they might not be in a room yet, so we alert
+            if (!myPeerId) alert(`PeerJS Signalling Server Error: ${err.type}`);
         });
     } catch (error) {
         console.error("Failed to fetch secure ICE servers:", error);
+        alert("Failed to fetch TURN servers from backend. Check Render server logs.");
     }
 }
 initializeWebRTC();
@@ -207,18 +239,17 @@ const roomDisplay = document.getElementById('roomDisplay');
 const leaveRoomBtn = document.getElementById('leaveRoomBtn');
 let currentRoom = null;
 
-// THE FIX: Added async/await so the camera starts before we join the room!
 async function enterRoom(roomId, isPublic = false, category = 'Movie Night', isCreating = false) {
     if (!myPeerId || !peer) return alert("Waiting for connection servers... try again in a moment.");
     currentRoom = roomId;
     roomDisplay.innerText = currentRoom;
     
-    // Switch the UI to the room immediately
     lobbySection.style.display = 'none';
     roomSection.style.display = 'flex';
     
-    // Wait for the camera to spin up fully before continuing
+    logDebug("1. UI Loaded. Waiting for camera to spin up...");
     await startLocalVideo(); 
+    logDebug("2. Camera is running. Telling the server I joined...");
     
     if (isCreating) {
         socket.emit('create_room', { roomId, isPublic, category });
@@ -277,7 +308,7 @@ function renderRoomList() {
 let ytPlayer;
 let isYouTubeActive = false;
 let ytEmitLock = false;
-let isRemoteAction = false; // Prevents recursive sync feedback loops
+let isRemoteAction = false; 
 
 function initYouTubePlayer() {
     ytPlayer = new YT.Player('ytPlayer', { 
@@ -299,63 +330,34 @@ function onPlayerStateChange(event) {
     }
 }
 
-// Native Video Listeners (Broadcasting local play, pause, seek)
-video.addEventListener('play', () => { 
-    if (!isRemoteAction && currentRoom && !isYouTubeActive) {
-        socket.emit('play_video', currentRoom); 
-    } 
-});
+video.addEventListener('play', () => { if (!isRemoteAction && currentRoom && !isYouTubeActive) socket.emit('play_video', currentRoom); });
+video.addEventListener('pause', () => { if (!isRemoteAction && currentRoom && !isYouTubeActive) socket.emit('pause_video', currentRoom); });
+video.addEventListener('seeked', () => { if (!isRemoteAction && currentRoom && !isYouTubeActive) socket.emit('seek_video', { roomId: currentRoom, time: video.currentTime }); });
 
-video.addEventListener('pause', () => { 
-    if (!isRemoteAction && currentRoom && !isYouTubeActive) {
-        socket.emit('pause_video', currentRoom); 
-    } 
-});
-
-video.addEventListener('seeked', () => { 
-    if (!isRemoteAction && currentRoom && !isYouTubeActive) {
-        socket.emit('seek_video', { roomId: currentRoom, time: video.currentTime }); 
-    } 
-});
-
-// Receiving Sync Commands From Other Users
 socket.on('receive_play', () => { 
     if (isYouTubeActive && ytPlayer && ytPlayer.playVideo) { 
-        ytEmitLock = true; 
-        ytPlayer.playVideo(); 
-        setTimeout(() => ytEmitLock = false, 600); 
+        ytEmitLock = true; ytPlayer.playVideo(); setTimeout(() => ytEmitLock = false, 600); 
     } else { 
-        isRemoteAction = true;
-        video.play().catch(() => {}).finally(() => {
-            setTimeout(() => { isRemoteAction = false; }, 400);
-        });
+        isRemoteAction = true; video.play().catch(() => {}).finally(() => { setTimeout(() => { isRemoteAction = false; }, 400); });
     } 
 });
 
 socket.on('receive_pause', () => { 
     if (isYouTubeActive && ytPlayer && ytPlayer.pauseVideo) { 
-        ytEmitLock = true; 
-        ytPlayer.pauseVideo(); 
-        setTimeout(() => ytEmitLock = false, 600); 
+        ytEmitLock = true; ytPlayer.pauseVideo(); setTimeout(() => ytEmitLock = false, 600); 
     } else { 
-        isRemoteAction = true;
-        video.pause();
-        setTimeout(() => { isRemoteAction = false; }, 400);
+        isRemoteAction = true; video.pause(); setTimeout(() => { isRemoteAction = false; }, 400);
     } 
 });
 
 socket.on('receive_seek', (time) => { 
     if (isYouTubeActive && ytPlayer && ytPlayer.seekTo) { 
         if (Math.abs(ytPlayer.getCurrentTime() - time) > 1.5) { 
-            ytEmitLock = true; 
-            ytPlayer.seekTo(time, true); 
-            setTimeout(() => ytEmitLock = false, 600); 
+            ytEmitLock = true; ytPlayer.seekTo(time, true); setTimeout(() => ytEmitLock = false, 600); 
         } 
     } else { 
         if (Math.abs(video.currentTime - time) > 1.5) { 
-            isRemoteAction = true;
-            video.currentTime = time; 
-            setTimeout(() => { isRemoteAction = false; }, 400);
+            isRemoteAction = true; video.currentTime = time; setTimeout(() => { isRemoteAction = false; }, 400);
         } 
     } 
 });
@@ -374,32 +376,18 @@ function processVideoLink(url) {
     const ytId = parseYouTubeId(url);
     if (ytId) {
         isYouTubeActive = true;
-        if (!isBoardOpen) { 
-            document.getElementById('videoPlayer').style.display = 'none'; 
-            document.getElementById('ytPlayer').style.display = 'block'; 
-        }
-        if (ytPlayer && ytPlayer.loadVideoById) { 
-            ytEmitLock = true; 
-            ytPlayer.loadVideoById(ytId); 
-            setTimeout(() => ytEmitLock = false, 600); 
-        }
+        if (!isBoardOpen) { document.getElementById('videoPlayer').style.display = 'none'; document.getElementById('ytPlayer').style.display = 'block'; }
+        if (ytPlayer && ytPlayer.loadVideoById) { ytEmitLock = true; ytPlayer.loadVideoById(ytId); setTimeout(() => ytEmitLock = false, 600); }
     } else {
         isYouTubeActive = false;
-        if (!isBoardOpen) { 
-            document.getElementById('ytPlayer').style.display = 'none'; 
-            document.getElementById('videoPlayer').style.display = 'block'; 
-        }
+        if (!isBoardOpen) { document.getElementById('ytPlayer').style.display = 'none'; document.getElementById('videoPlayer').style.display = 'block'; }
         video.src = url;
     }
 }
 
 loadUrlBtn.addEventListener('click', () => {
     const url = videoUrlInput.value.trim();
-    if (url && currentRoom) { 
-        processVideoLink(url); 
-        socket.emit('change_video_url', { roomId: currentRoom, url: url, isTorrent: false }); 
-        videoUrlInput.value = ''; 
-    }
+    if (url && currentRoom) { processVideoLink(url); socket.emit('change_video_url', { roomId: currentRoom, url: url, isTorrent: false }); videoUrlInput.value = ''; }
 });
 
 socket.on('receive_video_url', (data) => { 
@@ -409,37 +397,26 @@ socket.on('receive_video_url', (data) => {
             const file = torrent.files.find(f => f.name.endsWith('.mp4') || f.name.endsWith('.webm') || f.name.endsWith('.mkv')) || torrent.files[0];
             file.renderTo(video);
             isYouTubeActive = false;
-            if (!isBoardOpen) { 
-                document.getElementById('ytPlayer').style.display = 'none'; 
-                document.getElementById('videoPlayer').style.display = 'block'; 
-            }
+            if (!isBoardOpen) { document.getElementById('ytPlayer').style.display = 'none'; document.getElementById('videoPlayer').style.display = 'block'; }
         });
     } else {
-        processVideoLink(data.url); 
-        appendMessage("Video changed by room member.", "System"); 
+        processVideoLink(data.url); appendMessage("Video changed by room member.", "System"); 
     }
 });
 
-// WebTorrent Local Streaming (Host Seed)
 uploadBtn.addEventListener('click', () => { localFileInput.click(); });
 localFileInput.addEventListener('change', function() {
     const file = this.files[0];
     if (file) { 
         if (!currentRoom) return alert("Please join or create a room first!");
-        uploadBtn.innerText = "Seeding..."; 
-        uploadBtn.disabled = true;
-        
+        uploadBtn.innerText = "Seeding..."; uploadBtn.disabled = true;
         wtClient.seed(file, (torrent) => {
             torrent.files[0].renderTo(video);
             isYouTubeActive = false;
-            if (!isBoardOpen) { 
-                document.getElementById('ytPlayer').style.display = 'none'; 
-                document.getElementById('videoPlayer').style.display = 'block'; 
-            }
+            if (!isBoardOpen) { document.getElementById('ytPlayer').style.display = 'none'; document.getElementById('videoPlayer').style.display = 'block'; }
             socket.emit('change_video_url', { roomId: currentRoom, url: torrent.magnetURI, isTorrent: true });
             socket.emit('send_chat', { roomId: currentRoom, message: "Started streaming a local movie via WebTorrent P2P!", sender: "System" });
-            uploadBtn.innerText = "Stream Local P2P"; 
-            uploadBtn.disabled = false;
+            uploadBtn.innerText = "Stream Local P2P"; uploadBtn.disabled = false;
         });
     }
 });
@@ -462,32 +439,11 @@ theaterModeBtn.addEventListener('click', () => {
     theaterModeBtn.style.color = isTheaterMode ? "#111827" : "white";
 });
 
-tabChatBtn.addEventListener('click', () => { 
-    tabChatBtn.classList.add('active'); 
-    tabStudyBtn.classList.remove('active'); 
-    chatSection.style.display = 'flex'; 
-    studySection.style.display = 'none'; 
-});
-
-tabStudyBtn.addEventListener('click', () => { 
-    tabStudyBtn.classList.add('active'); 
-    tabChatBtn.classList.remove('active'); 
-    studySection.style.display = 'flex'; 
-    chatSection.style.display = 'none'; 
-});
+tabChatBtn.addEventListener('click', () => { tabChatBtn.classList.add('active'); tabStudyBtn.classList.remove('active'); chatSection.style.display = 'flex'; studySection.style.display = 'none'; });
+tabStudyBtn.addEventListener('click', () => { tabStudyBtn.classList.add('active'); tabChatBtn.classList.remove('active'); studySection.style.display = 'flex'; chatSection.style.display = 'none'; });
 
 const chatInput = document.getElementById('chatInput');
 const sendChatBtn = document.getElementById('sendChatBtn');
-const chatBox = document.getElementById('chatBox');
-
-function appendMessage(msg, sender) {
-    const msgElement = document.createElement('div');
-    msgElement.classList.add('chat-message');
-    msgElement.classList.add(sender === "You" || sender === "System" ? 'self' : 'other');
-    msgElement.innerHTML = `<strong>${sender}:</strong> ${msg}`;
-    chatBox.appendChild(msgElement);
-    chatBox.scrollTop = chatBox.scrollHeight; 
-}
 
 sendChatBtn.addEventListener('click', () => {
     const msg = chatInput.value;
@@ -502,9 +458,7 @@ socket.on('receive_chat', (data) => { appendMessage(data.message, data.sender ||
 
 const icebreakers = [
     "What is the absolute best movie soundtrack of all time?",
-    "If you could live inside any animated movie universe, which would you pick?",
-    "What's a hot take opinion you have about cinema?",
-    "If you were hosting a talk show, who would be your first guest?"
+    "If you could live inside any animated movie universe, which would you pick?"
 ];
 document.getElementById('icebreakerBtn').addEventListener('click', () => {
     const randomQuestion = icebreakers[Math.floor(Math.random() * icebreakers.length)];
@@ -519,15 +473,10 @@ soundBtns.forEach(btn => {
     btn.addEventListener('click', () => {
         const soundId = btn.getAttribute('data-sound');
         playSound(soundId);
-        if (currentRoom) {
-            socket.emit('play_sound', { roomId: currentRoom, soundId: soundId });
-        }
+        if (currentRoom) { socket.emit('play_sound', { roomId: currentRoom, soundId: soundId }); }
     });
 });
-
-socket.on('receive_sound', (soundId) => {
-    playSound(soundId);
-});
+socket.on('receive_sound', (soundId) => { playSound(soundId); });
 
 // ==========================================
 // 4. WHITEBOARD & 5. POMODORO TIMER LOGIC
@@ -546,42 +495,19 @@ window.addEventListener('resize', resizeCanvas);
 
 function toggleBoardUI(isOpen) {
     if (isOpen) {
-        whiteboardContainer.style.display = 'block'; 
-        openBoardBtn.innerText = "Close Whiteboard"; 
-        openBoardBtn.style.background = "#f43f5e"; 
-        openBoardBtn.style.color = "white";
-        document.getElementById('videoPlayer').style.display = 'none'; 
-        document.getElementById('ytPlayer').style.display = 'none'; 
-        setTimeout(resizeCanvas, 50);
+        whiteboardContainer.style.display = 'block'; openBoardBtn.innerText = "Close Whiteboard"; openBoardBtn.style.background = "#f43f5e"; openBoardBtn.style.color = "white";
+        document.getElementById('videoPlayer').style.display = 'none'; document.getElementById('ytPlayer').style.display = 'none'; setTimeout(resizeCanvas, 50);
     } else {
-        whiteboardContainer.style.display = 'none'; 
-        openBoardBtn.innerText = "Open Whiteboard"; 
-        openBoardBtn.style.background = "#a78bfa"; 
-        openBoardBtn.style.color = "#111827";
-        if (isYouTubeActive) { 
-            document.getElementById('ytPlayer').style.display = 'block'; 
-        } else { 
-            document.getElementById('videoPlayer').style.display = 'block'; 
-        }
+        whiteboardContainer.style.display = 'none'; openBoardBtn.innerText = "Open Whiteboard"; openBoardBtn.style.background = "#a78bfa"; openBoardBtn.style.color = "#111827";
+        if (isYouTubeActive) { document.getElementById('ytPlayer').style.display = 'block'; } else { document.getElementById('videoPlayer').style.display = 'block'; }
     }
 }
 
-openBoardBtn.addEventListener('click', () => { 
-    isBoardOpen = !isBoardOpen; 
-    toggleBoardUI(isBoardOpen); 
-    if (currentRoom) socket.emit('toggle_board', { roomId: currentRoom, isOpen: isBoardOpen }); 
-});
+openBoardBtn.addEventListener('click', () => { isBoardOpen = !isBoardOpen; toggleBoardUI(isBoardOpen); if (currentRoom) socket.emit('toggle_board', { roomId: currentRoom, isOpen: isBoardOpen }); });
 socket.on('receive_toggle_board', (isOpen) => { isBoardOpen = isOpen; toggleBoardUI(isBoardOpen); });
 
 function drawLine(x0, y0, x1, y1, color, emit) {
-    ctx.beginPath(); 
-    ctx.moveTo(x0, y0); 
-    ctx.lineTo(x1, y1); 
-    ctx.strokeStyle = color; 
-    ctx.lineWidth = 4; 
-    ctx.lineCap = 'round'; 
-    ctx.stroke(); 
-    ctx.closePath();
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.strokeStyle = color; ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.stroke(); ctx.closePath();
     if (!emit || !currentRoom) return;
     socket.emit('draw_line', { roomId: currentRoom, x0: x0 / canvas.width, y0: y0 / canvas.height, x1: x1 / canvas.width, y1: y1 / canvas.height, color: color });
 }
@@ -633,6 +559,7 @@ const cameraSelect = document.getElementById('cameraSelect');
 const micSelect = document.getElementById('micSelect');
 
 let localStream = null; 
+let isLocalStreamInit = false; // Prevents multiple rapid prompts
 const peers = {}; 
 let currentScreenStream = null; 
 let isScreenSharing = false; 
@@ -640,19 +567,19 @@ let isCamEnabled = true;
 
 async function startLocalVideo() {
     if (localStream) return localStream; 
+    if (isLocalStreamInit) return; // Prevent double-firing
+    isLocalStreamInit = true;
 
     try {
+        logDebug("Requesting camera/mic permissions...");
         localStream = await navigator.mediaDevices.getUserMedia({ 
             video: true, 
-            audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true,
-                sampleRate: 48000
-            } 
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, sampleRate: 48000 } 
         });
+        
         myCam.srcObject = localStream;
         makeVideoClickable(myCam, localStream);
+        logDebug("Permissions granted! Camera is active.");
 
         const devices = await navigator.mediaDevices.enumerateDevices();
         cameraSelect.innerHTML = ''; micSelect.innerHTML = '';
@@ -663,11 +590,13 @@ async function startLocalVideo() {
         });
 
         peer.on('call', (call) => {
+            logDebug("Incoming call received! Answering...");
             call.answer(localStream); 
             const friendVideo = document.createElement('video');
             friendVideo.id = `video-${call.peer}`;
 
             call.on('stream', (friendStream) => {
+                logDebug("Successfully caught friend's video stream!");
                 if (call.metadata && call.metadata.type === 'screenshare') {
                     isBoardOpen = false; toggleBoardUI(false); isYouTubeActive = false;
                     document.getElementById('ytPlayer').style.display = 'none'; document.getElementById('videoPlayer').style.display = 'block';
@@ -678,18 +607,32 @@ async function startLocalVideo() {
             });
 
             call.on('close', () => friendVideo.remove());
-            call.on('error', (err) => { console.error("Peer call error:", err); friendVideo.remove(); });
+            call.on('error', (err) => { logDebug("Call error: " + err); friendVideo.remove(); });
 
             peers[call.peer] = call;
         });
 
+        isLocalStreamInit = false;
         return localStream;
-    } catch (error) { console.error("Error accessing media:", error); }
+    } catch (error) { 
+        isLocalStreamInit = false;
+        logDebug("CRITICAL ERROR: Camera access denied or unavailable.");
+        console.error("Error accessing media:", error); 
+    }
 }
 
 socket.on('user_connected', async (newPeerId) => { 
+    logDebug("3. Someone just joined! Their Peer ID: " + newPeerId);
+    
+    // Ensure our camera is on before we call them
     const stream = localStream || await startLocalVideo();
-    if (stream && newPeerId !== myPeerId) connectToNewUser(newPeerId, stream); 
+    
+    if (stream && newPeerId !== myPeerId) {
+        logDebug("4. Calling new user now...");
+        connectToNewUser(newPeerId, stream); 
+    } else {
+        logDebug("Error: Could not call user. Stream missing or ID matched.");
+    }
 });
 
 function connectToNewUser(peerId, stream) {
@@ -699,9 +642,13 @@ function connectToNewUser(peerId, stream) {
     const friendVideo = document.createElement('video');
     friendVideo.id = `video-${peerId}`;
 
-    call.on('stream', (friendStream) => addVideoStream(friendVideo, friendStream));
+    call.on('stream', (friendStream) => {
+        logDebug("5. Successfully received friend's video stream in call!");
+        addVideoStream(friendVideo, friendStream);
+    });
+    
     call.on('close', () => { friendVideo.remove(); delete peers[peerId]; });
-    call.on('error', (err) => { console.error("Call error:", err); friendVideo.remove(); delete peers[peerId]; });
+    call.on('error', (err) => { logDebug("Call error to user: " + err); friendVideo.remove(); delete peers[peerId]; });
 
     peers[peerId] = call;
 
@@ -711,9 +658,16 @@ function connectToNewUser(peerId, stream) {
 }
 
 function addVideoStream(videoElement, stream) {
-    videoElement.srcObject = stream; videoElement.autoplay = true; videoElement.playsInline = true; makeVideoClickable(videoElement, stream);
+    videoElement.srcObject = stream; 
+    videoElement.autoplay = true; 
+    videoElement.playsInline = true; 
+    makeVideoClickable(videoElement, stream);
+    
     const existing = document.getElementById(videoElement.id);
-    if (!existing) videoGrid.append(videoElement);
+    if (!existing) {
+        videoGrid.append(videoElement);
+        logDebug("Video element injected into sidebar grid.");
+    }
 }
 
 function makeVideoClickable(videoElement, stream) {
