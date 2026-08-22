@@ -77,14 +77,13 @@ function playSound(soundId) {
     }
 }
 
-// Chat UI Helper (Moved up so WebRTC can use it for debugging)
+// Chat UI Helper
 const chatBox = document.getElementById('chatBox');
 function appendMessage(msg, sender) {
     const msgElement = document.createElement('div');
     msgElement.classList.add('chat-message');
     msgElement.classList.add(sender === "You" || sender === "System" || sender === "🛠️ WebRTC System" ? 'self' : 'other');
     
-    // Style the debug messages slightly differently
     if (sender === "🛠️ WebRTC System") {
         msgElement.style.background = "#fef08a";
         msgElement.style.color = "#111827";
@@ -191,6 +190,10 @@ const wtClient = new WebTorrent();
 let peer = null; 
 let myPeerId = null;
 
+socket.on('connect', () => {
+    console.log("Socket.io Connected:", socket.id);
+});
+
 async function initializeWebRTC() {
     try {
         const response = await fetch('/api/ice-servers');
@@ -201,10 +204,7 @@ async function initializeWebRTC() {
 
         peer = new Peer({
             secure: true,
-            config: {
-                iceServers: iceServers
-            },
-            debug: 2 // Enables PeerJS console logs
+            config: { iceServers: iceServers }
         }); 
 
         peer.on('open', (id) => { 
@@ -214,7 +214,6 @@ async function initializeWebRTC() {
         
         peer.on('error', (err) => { 
             console.error("PeerJS Critical Error:", err);
-            // We can't use logDebug here because they might not be in a room yet, so we alert
             if (!myPeerId) alert(`PeerJS Signalling Server Error: ${err.type}`);
         });
     } catch (error) {
@@ -247,14 +246,18 @@ async function enterRoom(roomId, isPublic = false, category = 'Movie Night', isC
     lobbySection.style.display = 'none';
     roomSection.style.display = 'flex';
     
-    logDebug("1. UI Loaded. Waiting for camera to spin up...");
-    await startLocalVideo(); 
-    logDebug("2. Camera is running. Telling the server I joined...");
-    
-    if (isCreating) {
-        socket.emit('create_room', { roomId, isPublic, category });
+    try {
+        logDebug("1. UI Loaded. Waiting for camera to spin up...");
+        await startLocalVideo(); 
+        logDebug("2. Camera is running. Telling the server I joined...");
+        
+        if (isCreating) {
+            socket.emit('create_room', { roomId, isPublic, category });
+        }
+        socket.emit('join_room', { roomId, peerId: myPeerId });
+    } catch (err) {
+        logDebug("❌ ENTER ROOM ERROR: " + err.message);
     }
-    socket.emit('join_room', { roomId, peerId: myPeerId });
 }
 
 createRoomBtn.addEventListener('click', () => {
@@ -312,10 +315,7 @@ let isRemoteAction = false;
 
 function initYouTubePlayer() {
     ytPlayer = new YT.Player('ytPlayer', { 
-        height: '100%', 
-        width: '100%', 
-        videoId: '', 
-        events: { 'onStateChange': onPlayerStateChange } 
+        height: '100%', width: '100%', videoId: '', events: { 'onStateChange': onPlayerStateChange } 
     });
 }
 if (window.YT && window.YT.Player) { initYouTubePlayer(); } else { window.onYouTubeIframeAPIReady = initYouTubePlayer; }
@@ -467,7 +467,6 @@ document.getElementById('icebreakerBtn').addEventListener('click', () => {
     if (currentRoom) socket.emit('send_chat', { roomId: currentRoom, message: fullMsg, sender: "System" });
 });
 
-// SOUNDBOARD CLICK LISTENERS
 const soundBtns = document.querySelectorAll('.sound-btn');
 soundBtns.forEach(btn => {
     btn.addEventListener('click', () => {
@@ -559,7 +558,7 @@ const cameraSelect = document.getElementById('cameraSelect');
 const micSelect = document.getElementById('micSelect');
 
 let localStream = null; 
-let isLocalStreamInit = false; // Prevents multiple rapid prompts
+let isLocalStreamInit = false; 
 const peers = {}; 
 let currentScreenStream = null; 
 let isScreenSharing = false; 
@@ -567,14 +566,15 @@ let isCamEnabled = true;
 
 async function startLocalVideo() {
     if (localStream) return localStream; 
-    if (isLocalStreamInit) return; // Prevent double-firing
+    if (isLocalStreamInit) return; 
     isLocalStreamInit = true;
 
     try {
         logDebug("Requesting camera/mic permissions...");
+        // I removed the strict sampleRate constraint here which causes Windows drivers to crash
         localStream = await navigator.mediaDevices.getUserMedia({ 
             video: true, 
-            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, sampleRate: 48000 } 
+            audio: { echoCancellation: true, noiseSuppression: true } 
         });
         
         myCam.srcObject = localStream;
@@ -616,22 +616,22 @@ async function startLocalVideo() {
         return localStream;
     } catch (error) { 
         isLocalStreamInit = false;
-        logDebug("CRITICAL ERROR: Camera access denied or unavailable.");
+        logDebug("❌ CAMERA ERROR: " + error.message);
         console.error("Error accessing media:", error); 
+        throw error; // Force it to trigger the catch block in enterRoom
     }
 }
 
 socket.on('user_connected', async (newPeerId) => { 
-    logDebug("3. Someone just joined! Their Peer ID: " + newPeerId);
+    logDebug("3. 📡 SOCKET: Someone just joined! ID: " + newPeerId);
     
-    // Ensure our camera is on before we call them
     const stream = localStream || await startLocalVideo();
     
     if (stream && newPeerId !== myPeerId) {
         logDebug("4. Calling new user now...");
         connectToNewUser(newPeerId, stream); 
     } else {
-        logDebug("Error: Could not call user. Stream missing or ID matched.");
+        logDebug("❌ Failed to call: Stream missing or ID matched.");
     }
 });
 
